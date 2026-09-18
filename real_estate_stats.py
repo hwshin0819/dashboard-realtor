@@ -159,3 +159,45 @@ def type_breakdown(start_ym: str, end_ym: str, region_short: str = "전국") -> 
             "비중": round(combined / total * 100, 1),
         })
     return out
+
+
+@st.cache_data(ttl=_CACHE_TTL)
+def jeonse_wolse_summary(start_ym: str, end_ym: str, region_short: str = "전국") -> dict:
+    """선택 기간·지역 기준 전세/월세 평균 보증금·평균 월세 (건수 가중평균).
+    전세 보증금(수억 단위)과 월세 보증금(수천만원대)은 성격이 달라 하나로 뭉치면 왜곡되므로 나눠서 낸다."""
+    codes = _codes_for_region(region_short)
+    conn = db.get_conn()
+    q = (
+        "SELECT count_jeonse, count_wolse, avg_deposit_jeonse, avg_deposit_wolse, avg_rent "
+        "FROM transaction_monthly WHERE trade_type='전월세' AND ym BETWEEN ? AND ?"
+    )
+    params = [start_ym, end_ym]
+    if codes is not None:
+        if not codes:
+            conn.close()
+            return {"전세평균보증금": None, "월세평균보증금": None, "평균월세": None, "전세건수": 0, "월세건수": 0}
+        q += f" AND sigungu_code IN ({','.join('?' for _ in codes)})"
+        params.extend(codes)
+    rows = conn.execute(q, params).fetchall()
+    conn.close()
+
+    jeonse_n = jeonse_sum = 0
+    wolse_n = wolse_deposit_sum = wolse_rent_sum = 0
+    for r in rows:
+        cj, cw = r["count_jeonse"] or 0, r["count_wolse"] or 0
+        if cj and r["avg_deposit_jeonse"] is not None:
+            jeonse_sum += r["avg_deposit_jeonse"] * cj
+            jeonse_n += cj
+        if cw and r["avg_deposit_wolse"] is not None:
+            wolse_deposit_sum += r["avg_deposit_wolse"] * cw
+            wolse_n += cw
+        if cw and r["avg_rent"] is not None:
+            wolse_rent_sum += r["avg_rent"] * cw
+
+    return {
+        "전세평균보증금": round(jeonse_sum / jeonse_n) if jeonse_n else None,
+        "월세평균보증금": round(wolse_deposit_sum / wolse_n) if wolse_n else None,
+        "평균월세": round(wolse_rent_sum / wolse_n) if wolse_n else None,
+        "전세건수": jeonse_n,
+        "월세건수": wolse_n,
+    }

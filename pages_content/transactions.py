@@ -236,6 +236,23 @@ def render():
         )
         st.markdown(cards_html, unsafe_allow_html=True)
 
+        # ---- 전세/월세 평균 보증금·평균 월세 (선택한 지역·기간 기준) ----
+        jw = res.jeonse_wolse_summary(start_month, end_month, region_short)
+        jw_cards_html = (
+            '<div class="ov-stats">'
+            + '<div class="ov-stat"><div class="label">전세 평균 보증금</div>'
+              + (f'<div class="value">{jw["전세평균보증금"]:,}만원</div><div class="delta">전세 {jw["전세건수"]:,}건 기준</div></div>'
+                 if jw["전세평균보증금"] is not None else '<div class="value">–</div><div class="delta">데이터 없음</div></div>')
+            + '<div class="ov-stat"><div class="label">월세 평균 보증금</div>'
+              + (f'<div class="value">{jw["월세평균보증금"]:,}만원</div><div class="delta">월세 {jw["월세건수"]:,}건 기준</div></div>'
+                 if jw["월세평균보증금"] is not None else '<div class="value">–</div><div class="delta">데이터 없음</div></div>')
+            + '<div class="ov-stat"><div class="label">평균 월세</div>'
+              + (f'<div class="value">{jw["평균월세"]:,}만원</div><div class="delta">월세 {jw["월세건수"]:,}건 기준</div></div>'
+                 if jw["평균월세"] is not None else '<div class="value">–</div><div class="delta">데이터 없음</div></div>')
+            + "</div>"
+        )
+        st.markdown(jw_cards_html, unsafe_allow_html=True)
+
         # ---- 2020-06 대비 매매 거래량 (전국/서울/수도권/지방) ----
         BASE_MONTH = "2020-06"
         COMPARE_MONTH = "2026-06"
