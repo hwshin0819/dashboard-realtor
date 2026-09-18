@@ -107,6 +107,25 @@ CREATE TABLE IF NOT EXISTS transaction_collect_progress (
     updated_at TEXT,
     PRIMARY KEY (sigungu_code, property_type, trade_type, ym)
 );
+
+-- 로그인 계정. Streamlit Cloud는 파일시스템이 재배포/재시작 때마다 초기화되므로
+-- users.json 같은 로컬 파일로는 계정이 못 살아남는다 — DB에 둬야 한다.
+CREATE TABLE IF NOT EXISTS app_users (
+    username TEXT PRIMARY KEY,
+    data TEXT NOT NULL
+);
+
+-- 접속 로그. 위와 같은 이유로 로컬 JSONL 파일 대신 DB에 쌓는다.
+CREATE TABLE IF NOT EXISTS access_log (
+    id SERIAL PRIMARY KEY,
+    ts TEXT,
+    user_id TEXT,
+    action TEXT,
+    result TEXT,
+    note TEXT,
+    ip TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_access_log_ts ON access_log(ts);
 """
 
 # SQLite "INSERT OR REPLACE INTO tbl (...)"를 Postgres "INSERT ... ON CONFLICT(pk) DO UPDATE"로

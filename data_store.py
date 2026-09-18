@@ -9,15 +9,15 @@ import os
 import random
 from datetime import datetime, timedelta
 
+import db
+
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.join(BASE_DIR, "data")
 os.makedirs(DATA_DIR, exist_ok=True)
 
-USERS_FILE = os.path.join(DATA_DIR, "users.json")
 WEBHOOKS_FILE = os.path.join(DATA_DIR, "webhooks.json")
 TARGETS_FILE = os.path.join(DATA_DIR, "targets.json")
 SCHEDULE_FILE = os.path.join(DATA_DIR, "schedule.json")
-ACCESS_LOG_FILE = os.path.join(DATA_DIR, "access_log.jsonl")
 STATS_FILE = os.path.join(DATA_DIR, "mock_stats.json")
 
 
@@ -39,12 +39,23 @@ def _save_json(path, obj):
 
 
 # ---------- 사용자 (로그인 계정) ----------
+# Streamlit Cloud는 재배포/재시작마다 파일시스템이 초기화되므로, 로컬 JSON 대신 DB(app_users)에 둔다.
 def load_users():
-    return _load_json(USERS_FILE, {})
+    conn = db.get_conn()
+    rows = conn.execute("SELECT username, data FROM app_users").fetchall()
+    conn.close()
+    return {r["username"]: json.loads(r["data"]) for r in rows}
 
 
 def save_users(users: dict):
-    _save_json(USERS_FILE, users)
+    conn = db.get_conn()
+    conn.execute("DELETE FROM app_users")
+    if users:
+        conn.execute_values(
+            "INSERT INTO app_users (username, data) VALUES %s",
+            [(username, json.dumps(u, ensure_ascii=False)) for username, u in users.items()],
+        )
+    conn.close()
 
 
 # ---------- 웹훅 ----------
@@ -98,33 +109,27 @@ def save_schedule(rows):
 
 
 # ---------- 접속 로그 ----------
+# 위와 같은 이유(Streamlit Cloud 파일시스템 초기화)로 로컬 JSONL 대신 DB(access_log)에 쌓는다.
 def append_access_log(user_id: str, action: str, success: bool, note: str = "", ip: str | None = None):
-    entry = {
-        "시각": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        "아이디": user_id,
-        "동작": action,
-        "결과": "성공" if success else "실패",
-        "비고": note,
-        "IP": ip or "-",
-    }
-    with open(ACCESS_LOG_FILE, "a", encoding="utf-8") as f:
-        f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+    conn = db.get_conn()
+    conn.execute(
+        "INSERT INTO access_log (ts, user_id, action, result, note, ip) VALUES (?,?,?,?,?,?)",
+        (
+            datetime.now().strftime("%Y-%m-%d %H:%M:%S"), user_id, action,
+            "성공" if success else "실패", note, ip or "-",
+        ),
+    )
+    conn.close()
 
 
 def load_access_log():
-    if not os.path.exists(ACCESS_LOG_FILE):
-        return []
-    rows = []
-    with open(ACCESS_LOG_FILE, "r", encoding="utf-8") as f:
-        for line in f:
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                rows.append(json.loads(line))
-            except json.JSONDecodeError:
-                continue
-    return rows
+    conn = db.get_conn()
+    rows = conn.execute("SELECT ts, user_id, action, result, note, ip FROM access_log ORDER BY id").fetchall()
+    conn.close()
+    return [
+        {"시각": r["ts"], "아이디": r["user_id"], "동작": r["action"], "결과": r["result"], "비고": r["note"], "IP": r["ip"]}
+        for r in rows
+    ]
 
 
 # ---------- 개요용 목업 통계 ----------
