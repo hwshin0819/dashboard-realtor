@@ -1,0 +1,16 @@
+# PublicDataReader는 pandas==2.2.3/requests==2.32.3/xmltodict==0.14.2/beautifulsoup4==4.13.3를
+# 정확히 요구하는데, 이 프로젝트의 Python 3.14 환경에서는 그 pandas 버전이 소스 빌드로만
+# 설치되고 한글 경로/로케일 때문에 빌드가 실패한다. 이미 설치된 최신 pandas(3.x)로도
+# PublicDataReader는 정상 동작하므로, 새로 설치할 때는 아래처럼 --no-deps로 설치할 것:
+#   pip install --no-deps PublicDataReader
+#   pip install python-dotenv xmltodict beautifulsoup4
+streamlit>=1.38
+pandas>=2.0
+plotly>=5.20
+requests>=2.31
+openpyxl>=3.1
+PublicDataReader>=1.1.1
+python-dotenv>=1.0
+xmltodict>=0.14
+beautifulsoup4>=4.13
+psycopg2-binary>=2.9
