@@ -101,6 +101,9 @@ ALTER TABLE transaction_monthly ADD COLUMN IF NOT EXISTS count_jeonse INTEGER;
 ALTER TABLE transaction_monthly ADD COLUMN IF NOT EXISTS count_wolse INTEGER;
 ALTER TABLE transaction_monthly ADD COLUMN IF NOT EXISTS avg_deposit_jeonse INTEGER;
 ALTER TABLE transaction_monthly ADD COLUMN IF NOT EXISTS avg_deposit_wolse INTEGER;
+-- 전세 중 계약갱신청구권(주택임대차보호법)을 사용한 건수. 국토부 API의 '갱신요구권사용' 필드가
+-- "사용"/공백(NaN)으로만 내려와서 신규 전세와 갱신 전세를 구분할 수 있다.
+ALTER TABLE transaction_monthly ADD COLUMN IF NOT EXISTS count_jeonse_renewal INTEGER;
 
 -- 재개 가능한 백필 진행 상황 체크포인트: 이 조합을 이미 수집했는지 여부.
 CREATE TABLE IF NOT EXISTS transaction_collect_progress (
