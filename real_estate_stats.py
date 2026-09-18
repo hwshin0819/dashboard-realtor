@@ -201,3 +201,46 @@ def jeonse_wolse_summary(start_ym: str, end_ym: str, region_short: str = "전국
         "전세건수": jeonse_n,
         "월세건수": wolse_n,
     }
+
+
+@st.cache_data(ttl=_CACHE_TTL)
+def load_jeonse_wolse_monthly_series(region_short: str = "전국", property_type: str = "전체") -> list:
+    """월별 [전세(신규)건수, 전세(갱신청구권)건수, 월세건수] 시계열 (월 오름차순).
+    거래량 추이 그래프에서 '전월세' 막대를 전세/월세로, 전세는 다시 신규/갱신으로 더 쪼개 보여줄 때 쓴다."""
+    codes = _codes_for_region(region_short)
+    conn = db.get_conn()
+    q = (
+        "SELECT ym, count_jeonse, count_wolse, count_jeonse_renewal FROM transaction_monthly "
+        "WHERE trade_type='전월세'"
+    )
+    params = []
+    if property_type != "전체":
+        q += " AND property_type=?"
+        params.append(property_type)
+    if codes is not None:
+        if not codes:
+            conn.close()
+            return []
+        q += f" AND sigungu_code IN ({','.join('?' for _ in codes)})"
+        params.extend(codes)
+    rows = conn.execute(q, params).fetchall()
+    conn.close()
+
+    agg = defaultdict(lambda: {"jeonse": 0, "renewal": 0, "wolse": 0})
+    for r in rows:
+        a = agg[r["ym"]]
+        a["jeonse"] += r["count_jeonse"] or 0
+        a["renewal"] += r["count_jeonse_renewal"] or 0
+        a["wolse"] += r["count_wolse"] or 0
+
+    out = [
+        {
+            "월": ym,
+            "전세신규건수": a["jeonse"] - a["renewal"],
+            "전세갱신건수": a["renewal"],
+            "월세건수": a["wolse"],
+        }
+        for ym, a in agg.items()
+    ]
+    out.sort(key=lambda r: r["월"])
+    return out

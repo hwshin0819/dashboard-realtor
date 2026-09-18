@@ -13,10 +13,13 @@ from theme import CARD, GREEN, INK, LINE, MUTED
 
 _PILL_GREEN = "#027A48"  # 빠른 선택 버튼 선택 상태 강조색 (경영진 보고용 배색 지침)
 
-# 거래량 추이 차트 팔레트 — 매매(짙은 블루)·전월세(연한 베이지그레이)를 쌓고, 매매 평균 거래금액만 코랄선으로
-# 겹쳐서 "매매 시세 흐름"이 또렷하게 보이도록 한다(전세/월세 보증금을 섞은 값은 오해 소지가 있어 쓰지 않는다).
+# 거래량 추이 차트 팔레트 — 매매(짙은 블루) + 전세(신규/갱신, 같은 계열의 밝은/어두운 초록) +
+# 월세(황토색)를 쌓고, 매매 평균 거래금액만 코랄선으로 겹쳐서 "매매 시세 흐름"이 또렷하게 보이도록
+# 한다(전세/월세 보증금을 섞은 값은 오해 소지가 있어 쓰지 않는다).
 _BAR_MAE = "#2B4C7E"
-_BAR_JEON = "#D9E2EC"
+_BAR_JEONSE_NEW = "#8FBBA9"
+_BAR_JEONSE_RENEWAL = "#2F6B52"
+_BAR_WOLSE = "#D9A857"
 _LINE_PRICE = "#F97316"
 
 # 이 페이지 전용 CSS — 전부 .st-key-transactions_root로 스코프를 걸어 다른 페이지엔 영향 없음.
@@ -88,16 +91,22 @@ def _quarter_label(ym: str) -> str:
     return f"{y}-Q{q}"
 
 
-def _build_trend_rows(mae_rows: list, jeon_rows: list, period_months: list) -> list:
-    """매매/전월세 시리즈를 월 기준으로 합쳐 [월, 매매건수, 전월세건수, 매매평균가] 행으로 만든다."""
-    by_month = {m: {"매매건수": 0, "전월세건수": 0, "매매평균가": None} for m in period_months}
+def _build_trend_rows(mae_rows: list, jw_rows: list, period_months: list) -> list:
+    """매매/전세(신규)/전세(갱신)/월세 시리즈를 월 기준으로 합쳐
+    [월, 매매건수, 전세신규건수, 전세갱신건수, 월세건수, 매매평균가] 행으로 만든다."""
+    by_month = {
+        m: {"매매건수": 0, "전세신규건수": 0, "전세갱신건수": 0, "월세건수": 0, "매매평균가": None}
+        for m in period_months
+    }
     for r in mae_rows:
         if r["월"] in by_month:
             by_month[r["월"]]["매매건수"] = r["건수"] or 0
             by_month[r["월"]]["매매평균가"] = r["평균매매가"]
-    for r in jeon_rows:
+    for r in jw_rows:
         if r["월"] in by_month:
-            by_month[r["월"]]["전월세건수"] = r["건수"] or 0
+            by_month[r["월"]]["전세신규건수"] = r["전세신규건수"] or 0
+            by_month[r["월"]]["전세갱신건수"] = r["전세갱신건수"] or 0
+            by_month[r["월"]]["월세건수"] = r["월세건수"] or 0
     return [{"월": m, **by_month[m]} for m in period_months]
 
 
@@ -106,17 +115,20 @@ def _aggregate_trend(rows: list, quarterly: bool) -> list:
     거래량은 합계, 가격은 매매 건수 가중평균으로 집계한다."""
     if not quarterly or not rows:
         return rows
-    agg = defaultdict(lambda: {"매매건수": 0, "전월세건수": 0, "amt_sum": 0.0, "amt_n": 0})
+    agg = defaultdict(lambda: {"매매건수": 0, "전세신규건수": 0, "전세갱신건수": 0, "월세건수": 0, "amt_sum": 0.0, "amt_n": 0})
     for r in rows:
         a = agg[_quarter_label(r["월"])]
         a["매매건수"] += r["매매건수"] or 0
-        a["전월세건수"] += r["전월세건수"] or 0
+        a["전세신규건수"] += r["전세신규건수"] or 0
+        a["전세갱신건수"] += r["전세갱신건수"] or 0
+        a["월세건수"] += r["월세건수"] or 0
         if r["매매평균가"] is not None and r["매매건수"]:
             a["amt_sum"] += r["매매평균가"] * r["매매건수"]
             a["amt_n"] += r["매매건수"]
     out = [
         {
-            "월": k, "매매건수": a["매매건수"], "전월세건수": a["전월세건수"],
+            "월": k, "매매건수": a["매매건수"], "전세신규건수": a["전세신규건수"],
+            "전세갱신건수": a["전세갱신건수"], "월세건수": a["월세건수"],
             "매매평균가": round(a["amt_sum"] / a["amt_n"]) if a["amt_n"] else None,
         }
         for k, a in agg.items()
@@ -126,11 +138,13 @@ def _aggregate_trend(rows: list, quarterly: bool) -> list:
 
 
 def _trend_chart(rows: list) -> go.Figure:
-    """누적 막대(매매+전월세=총거래량) + 매매 평균 거래금액 꺾은선, 이중 축."""
+    """누적 막대(매매+전세신규+전세갱신+월세=총거래량) + 매매 평균 거래금액 꺾은선, 이중 축."""
     df = pd.DataFrame(rows)
     fig = go.Figure()
     fig.add_bar(x=df["월"], y=df["매매건수"], name="매매", marker_color=_BAR_MAE)
-    fig.add_bar(x=df["월"], y=df["전월세건수"], name="전월세", marker_color=_BAR_JEON)
+    fig.add_bar(x=df["월"], y=df["전세신규건수"], name="전세(신규)", marker_color=_BAR_JEONSE_NEW)
+    fig.add_bar(x=df["월"], y=df["전세갱신건수"], name="전세(갱신청구권)", marker_color=_BAR_JEONSE_RENEWAL)
+    fig.add_bar(x=df["월"], y=df["월세건수"], name="월세", marker_color=_BAR_WOLSE)
     fig.add_trace(go.Scatter(
         x=df["월"], y=df["매매평균가"], name="매매 평균 거래금액",
         mode="lines+markers", line=dict(color=_LINE_PRICE, width=2.5), yaxis="y2",
@@ -215,6 +229,7 @@ def render():
         period_series = [r for r in series_all if r["월"] in period_months]
         mae_series = res.load_monthly_series(property_type, "매매", region_short)
         jeon_series = res.load_monthly_series(property_type, "전월세", region_short)
+        jw_series = res.load_jeonse_wolse_monthly_series(region_short, property_type)
 
         # ---- KPI 카드 3개 (총량 -> 매매 -> 전월세 흐름) ----
         total_count = sum(r["건수"] for r in period_series)
@@ -286,9 +301,10 @@ def render():
         with tabA:
             with st.container(border=True):
                 h1, h2 = st.columns([3, 1])
-                h1.markdown('<div class="ov-panel-title">매매·전월세 거래량 추이</div>', unsafe_allow_html=True)
+                h1.markdown('<div class="ov-panel-title">매매·전세·월세 거래량 추이</div>', unsafe_allow_html=True)
                 h1.markdown(
-                    '<div class="ov-panel-desc">누적 막대: 매매(진한 블루) + 전월세(연한 그레이) = 총 거래량(건)<br>'
+                    '<div class="ov-panel-desc">누적 막대: 매매(진한 블루) + 전세신규(연한 초록) + 전세갱신(진한 초록) '
+                    '+ 월세(황토색) = 총 거래량(건)<br>'
                     '코랄선: 매매 평균 거래금액(만원)</div>', unsafe_allow_html=True,
                 )
                 with h2:
@@ -298,7 +314,7 @@ def render():
                             "단위", ["월별", "분기별"], horizontal=True, label_visibility="collapsed", key="re_unit",
                         ) == "분기별"
 
-                trend_rows = _build_trend_rows(mae_series, jeon_series, period_months)
+                trend_rows = _build_trend_rows(mae_series, jw_series, period_months)
                 if not trend_rows:
                     st.info("선택한 조건에 해당하는 데이터가 없습니다.")
                 else:
