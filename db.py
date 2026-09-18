@@ -90,12 +90,17 @@ CREATE TABLE IF NOT EXISTS transaction_monthly (
     sigungu_code TEXT NOT NULL,
     property_type TEXT NOT NULL,
     trade_type TEXT NOT NULL,
-    count INTEGER,
+    count INTEGER,          -- trade_type='전월세'면 전세+월세 합계(하위호환용, 계속 채움)
     avg_price INTEGER,
-    avg_deposit INTEGER,
-    avg_rent INTEGER,
+    avg_deposit INTEGER,    -- trade_type='전월세'면 전세+월세 통합 평균(하위호환용)
+    avg_rent INTEGER,       -- 월세 계약의 평균 월세금
     PRIMARY KEY (ym, sigungu_code, property_type, trade_type)
 );
+-- 전세/월세를 구분해서 보려고 나중에 추가한 컬럼들. 기존 count/avg_deposit는 그대로 두고 옆에 더한다.
+ALTER TABLE transaction_monthly ADD COLUMN IF NOT EXISTS count_jeonse INTEGER;
+ALTER TABLE transaction_monthly ADD COLUMN IF NOT EXISTS count_wolse INTEGER;
+ALTER TABLE transaction_monthly ADD COLUMN IF NOT EXISTS avg_deposit_jeonse INTEGER;
+ALTER TABLE transaction_monthly ADD COLUMN IF NOT EXISTS avg_deposit_wolse INTEGER;
 
 -- 재개 가능한 백필 진행 상황 체크포인트: 이 조합을 이미 수집했는지 여부.
 CREATE TABLE IF NOT EXISTS transaction_collect_progress (

@@ -127,7 +127,8 @@ class _RateLimiter:
 
 
 def _fetch_one(api, property_type: str, trade_type: str, sigungu_code: str, ym: str, limiter: "_RateLimiter"):
-    """한 (시군구,유형,거래유형,연월) 조합을 호출해 (건수, 평균매매가, 평균보증금, 평균월세)를 반환한다.
+    """한 (시군구,유형,거래유형,연월) 조합을 호출해
+    (건수, 평균매매가, 평균보증금, 평균월세, 전세건수, 월세건수, 전세평균보증금, 월세평균보증금)을 반환한다.
     '초당 요청한도 초과(PER_SECOND)'를 만나면 공유 쿨다운으로 전체 워커를 잠깐 세웠다가 재시도한다 —
     이걸 곧바로 run_backfill()의 연속-실패 카운트로 넘기면 8번 만에(병렬이라 1초도 안 걸려) 전체
     실행이 조기 중단돼버리므로, 여기서 먼저 흡수한다."""
@@ -147,23 +148,30 @@ def _fetch_one(api, property_type: str, trade_type: str, sigungu_code: str, ym: 
                 continue
             raise
     if df is None or df.empty:
-        return 0, None, None, None
+        return 0, None, None, None, 0, 0, None, None
 
     if trade_type == "매매":
         if "해제여부" in df.columns:
             df = df[df["해제여부"].isna() | (df["해제여부"].astype(str).str.strip() == "")]
         count = len(df)
         avg_price = int(df["거래금액"].mean()) if count and "거래금액" in df.columns else None
-        return count, avg_price, None, None
+        return count, avg_price, None, None, 0, 0, None, None
 
     count = len(df)
     avg_deposit = int(df["보증금액"].mean()) if count and "보증금액" in df.columns else None
-    avg_rent = None
-    if count and "월세금액" in df.columns:
-        rent_rows = df[df["월세금액"] > 0]
-        if len(rent_rows):
-            avg_rent = int(rent_rows["월세금액"].mean())
-    return count, None, avg_deposit, avg_rent
+
+    has_rent_col = "월세금액" in df.columns
+    wolse_mask = df["월세금액"] > 0 if has_rent_col else None
+    jeonse_rows = df[~wolse_mask] if has_rent_col else df
+    wolse_rows = df[wolse_mask] if has_rent_col else df.iloc[0:0]
+
+    count_jeonse = len(jeonse_rows)
+    count_wolse = len(wolse_rows)
+    avg_deposit_jeonse = int(jeonse_rows["보증금액"].mean()) if count_jeonse and "보증금액" in jeonse_rows.columns else None
+    avg_deposit_wolse = int(wolse_rows["보증금액"].mean()) if count_wolse and "보증금액" in wolse_rows.columns else None
+    avg_rent = int(wolse_rows["월세금액"].mean()) if count_wolse else None
+
+    return count, None, avg_deposit, avg_rent, count_jeonse, count_wolse, avg_deposit_jeonse, avg_deposit_wolse
 
 
 def run_backfill(
@@ -216,12 +224,19 @@ def run_backfill(
             for fut in done:
                 code, name, ptype, ttype, ym = in_flight.pop(fut)
                 try:
-                    count, avg_price, avg_deposit, avg_rent = fut.result()
+                    (
+                        count, avg_price, avg_deposit, avg_rent,
+                        count_jeonse, count_wolse, avg_deposit_jeonse, avg_deposit_wolse,
+                    ) = fut.result()
                     conn.execute(
                         """INSERT OR REPLACE INTO transaction_monthly
-                           (ym, sigungu_code, property_type, trade_type, count, avg_price, avg_deposit, avg_rent)
-                           VALUES (?,?,?,?,?,?,?,?)""",
-                        (ym, code, ptype, ttype, count, avg_price, avg_deposit, avg_rent),
+                           (ym, sigungu_code, property_type, trade_type, count, avg_price, avg_deposit, avg_rent,
+                            count_jeonse, count_wolse, avg_deposit_jeonse, avg_deposit_wolse)
+                           VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+                        (
+                            ym, code, ptype, ttype, count, avg_price, avg_deposit, avg_rent,
+                            count_jeonse, count_wolse, avg_deposit_jeonse, avg_deposit_wolse,
+                        ),
                     )
                     conn.execute(
                         """INSERT OR REPLACE INTO transaction_collect_progress
