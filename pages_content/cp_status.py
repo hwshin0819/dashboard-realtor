@@ -400,14 +400,20 @@ def _stacked100(rows, cats, matrix, colors=None, *, height=None, highlight=None,
     return fig
 
 
-def _heatmap(rows, cols, z, *, unit="%", height=None, title=None):
-    """단일 색상 순차 램프 히트맵(무지개 금지). 값이 클수록 진하다."""
-    text = [[("–" if v is None else f"{v:,.2f}") for v in r] for r in z]
+def _heatmap(rows, cols, z, *, unit="%", digits=2, suffix="", height=None,
+             title=None):
+    """단일 색상 순차 램프 히트맵(무지개 금지). 값이 클수록 진하다.
+
+    digits/suffix는 칸 안 숫자 서식. 건수를 소수점까지 찍으면 '32,044.00'처럼
+    읽기만 나빠지고, 비율은 %가 붙어야 무슨 값인지 바로 안다."""
+    text = [[("–" if v is None else f"{v:,.{digits}f}{suffix}") for v in r]
+            for r in z]
     fig = go.Figure(go.Heatmap(
         z=z, x=cols, y=rows, text=text, texttemplate="%{text}",
         colorscale=[[0, "#EAF3EE"], [1, GREEN_DEEP]], showscale=False,
         xgap=2, ygap=2, textfont=dict(size=9, color=INK),
-        hovertemplate="%{y} · %{x}<br>%{z:,.2f}" + unit + "<extra></extra>",
+        hovertemplate="%{y} · %{x}<br>%{z:,." + str(digits) + "f}" + unit
+                      + "<extra></extra>",
     ))
     fig.update_layout(
         xaxis=dict(side="top", showgrid=False, tickfont=dict(size=10)),
@@ -942,10 +948,16 @@ def _region_methods_all(D, T, include_hg, focus):
             rows.append(cp)
             z.append(vals)
 
-    hm = pd.DataFrame(z, index=rows, columns=sidos).reset_index()
+    # 건수는 정수, 비율은 %. 점유율은 작은 값(0.5% 등)이 많아 두 자리를 남긴다.
+    fmt = ({"unit": "", "digits": 0, "suffix": ""} if basis == "건수"
+           else {"unit": "%", "digits": 2, "suffix": "%"} if basis == "점유율"
+           else {"unit": "%", "digits": 1, "suffix": "%"})
+    hm = pd.DataFrame(z, index=rows, columns=sidos).round(fmt["digits"]).reset_index()
     hm = hm.rename(columns={"index": "CP"})
+    if fmt["digits"] == 0:
+        hm[sidos] = hm[sidos].astype("Int64")
     _dl_row(hm, f"지역히트맵_{focus}_{basis}_{D['months'][i]}", "cp_hm_dl", "히트맵")
-    st.plotly_chart(_heatmap(rows, sidos, z, unit="" if basis == "건수" else "%"),
+    st.plotly_chart(_heatmap(rows, sidos, z, **fmt),
                     use_container_width=True, config={"displayModeBar": False})
 
 
@@ -1540,7 +1552,10 @@ def render():
         # ---- 전역 컨트롤 ----
         options = _cp_options(D)
         default_i = options.index("이실장") if "이실장" in options else 0
-        c1, c0, c2, c3 = st.columns([1.05, 0.8, 2.5, 1.05])
+        # 기간 슬라이더는 넓어야 하고 시점 드롭다운은 그럴 필요가 없다. 어느 쪽인지는
+        # 위젯을 만들기 전에 session_state에서 읽어 칸 너비를 정한다.
+        wide = (st.session_state.get("cp_tmode") or "시점") == "기간"
+        c1, c0, c2, c3 = st.columns([1.05, 0.8, 2.5 if wide else 1.2, 1.05])
         selected = c1.selectbox("CP", options, index=default_i, key="cp_sel",
                                 format_func=_cp_label)
         mode = c0.segmented_control("보기", ["시점", "기간"], default="시점",
@@ -1553,8 +1568,8 @@ def render():
                 month_lab = None
             else:
                 rng = None
-                month_lab = st.segmented_control(
-                    "시점", D["labels"], default=D["labels"][-1],
+                month_lab = st.selectbox(
+                    "시점", D["labels"], index=len(D["labels"]) - 1,
                     key="cp_month") or D["labels"][-1]
         T = _period(D, mode, month_lab, rng)
 
