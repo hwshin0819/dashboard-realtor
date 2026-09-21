@@ -1521,14 +1521,15 @@ def _kpi(D, selected, T, include_hg):
 
 # ── 진입점 ───────────────────────────────────────────────────────────────────
 def render():
-    if cs.data_version() is None:
+    version = cs.data_version()
+    if version is None:
         st.title(auth.PAGE_CP_STATUS)
         st.info(
             "아직 CP 원본이 올라와 있지 않습니다. 관리자 계정으로 "
             f"**{auth.PAGE_ADMIN} → CP 원본 업로드**에서 `{cs.XLSX_NAME}`을 올려주세요.")
         return
 
-    D = cs.load_default()
+    D = cs.load(version)
 
     with st.container(key="cp_root"):
         st.markdown(_EXTRA_CSS, unsafe_allow_html=True)

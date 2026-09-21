@@ -291,9 +291,15 @@ def load(version: str) -> dict:
     return out
 
 
+@st.cache_data(ttl=30, show_spinner=False)
 def data_version() -> str | None:
-    """원본 버전 문자열(= 캐시 키). DB에 적재본이 있으면 그걸 쓰고, 없으면 로컬 엑셀을
-    본다. 둘 다 없으면 None — 화면은 '원본을 올려주세요' 안내를 띄운다."""
+    """원본 버전 문자열(= load의 캐시 키). DB에 적재본이 있으면 그걸 쓰고, 없으면 로컬
+    엑셀을 본다. 둘 다 없으면 None — 화면은 '원본을 올려주세요' 안내를 띄운다.
+
+    ttl을 30초로 둔 이유: 이 함수는 Supabase에 새 커넥션을 열어 150ms쯤 걸리는데,
+    Streamlit은 위젯을 누를 때마다 전체를 다시 실행한다. 캐시가 없으면 클릭할 때마다
+    그만큼 느려진다. 반대로 영구 캐시로 두면 다른 서버에서 올린 새 원본을 못 본다.
+    30초면 클릭 비용은 0에 수렴하고, 업로드는 30초 안에 모든 서버에 퍼진다."""
     try:
         v = cp_store.version()
     except Exception:
