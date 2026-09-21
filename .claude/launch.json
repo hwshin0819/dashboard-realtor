@@ -4,8 +4,28 @@
     {
       "name": "streamlit-dashboard",
       "runtimeExecutable": ".venv\\Scripts\\streamlit.exe",
-      "runtimeArgs": ["run", "app.py", "--server.port", "9000", "--server.headless", "true"],
+      "runtimeArgs": [
+        "run",
+        "app.py",
+        "--server.port",
+        "9000",
+        "--server.headless",
+        "true"
+      ],
       "port": 9000
+    },
+    {
+      "name": "cp-preview",
+      "runtimeExecutable": ".venv\\Scripts\\streamlit.exe",
+      "runtimeArgs": [
+        "run",
+        "C:/Users/proptier/AppData/Local/Temp/claude/C--Users-proptier-Desktop---------------/6450fb1a-0df7-4dfe-ac55-71d852cd094f/scratchpad/_cp_preview.py",
+        "--server.port",
+        "9001",
+        "--server.headless",
+        "true"
+      ],
+      "port": 9001
     }
   ]
 }

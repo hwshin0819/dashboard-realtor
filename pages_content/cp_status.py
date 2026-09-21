@@ -33,6 +33,7 @@ SERIES_COLORS = {
 COLOR_OTHER = "#e87ba4"   # 위 4개에 없는 '선택한 CP'
 COLOR_HG = "#9AA4A0"      # 한공협(협회라 성격이 달라 회색 고정)
 COLOR_ETC = "#C4CAC6"     # 상위권 밖을 묶은 '기타'
+PILL_GREEN = "#027A48"    # 세그먼트 버튼 선택 상태 (실거래량 동향과 같은 배색 지침)
 FIXED_SERIES = ["이실장", "매경", "써브", "뱅크"]
 
 # 검증방식처럼 여러 계열을 한 그림에 쌓을 때 쓰는 순서 고정 팔레트.
@@ -150,6 +151,28 @@ _EXTRA_CSS = f"""
 .st-key-cp_root #rgdrill tr.kid td.region {{ padding-left:22px; font-weight:400; }}
 .st-key-cp_root #cpdrill tr.sido td,
 .st-key-cp_root #rgdrill tr.sido td {{ font-weight:600; }}
+
+/* 세그먼트 버튼 — 다른 메뉴(실거래량 동향 '빠른 선택')와 같은 모양으로 통일한다.
+   선택된 것만 초록 배경+흰 글자, 나머지는 회색 테두리.
+   높이 38px은 옆에 서는 셀렉트박스에 맞춘 값이다(기본 32px이면 밑단이 떠 보인다). */
+.st-key-cp_root button[data-variant="segmented_control"] {{
+    height:38px !important;
+    border:1.5px solid {LINE} !important;
+    background:{CARD} !important;
+    border-radius:8px !important;
+}}
+.st-key-cp_root button[data-variant="segmented_control"] p {{
+    color:{MUTED} !important; font-weight:500 !important;
+}}
+.st-key-cp_root button[data-variant="segmented_control"][data-selected="true"] {{
+    background:{PILL_GREEN} !important; border-color:{PILL_GREEN} !important;
+}}
+.st-key-cp_root button[data-variant="segmented_control"][data-selected="true"] p {{
+    color:#fff !important; font-weight:700 !important;
+}}
+/* 토글은 위에 라벨 줄이 없어 혼자 27px 위로 떠 있었다. 옆 컨트롤과 중심을 맞춘다. */
+.st-key-cp_root .st-key-cp_hg_user,
+.st-key-cp_root .st-key-cp_hg_forced {{ margin-top:27px; }}
 
 /* 열이 몇 개 안 되는 표는 화면 폭을 다 쓰면 숫자 사이가 벌어져 오히려 읽기 어렵다 */
 .st-key-cp_root .ov-narrow {{ max-width:620px; }}
@@ -907,7 +930,7 @@ def _region_methods_all(D, T, include_hg, focus):
     idx = [D["methods"].index(p) for p in HEATMAP_METRICS[focus]]
 
     head_l, head_m, head_r = st.columns([1.15, 0.95, 1.25])
-    head_l.markdown('<div class="ov-panel-title" style="padding-top:6px;">지역 히트맵</div>',
+    head_l.markdown('<div class="ov-panel-title" style="padding-top:9px;">지역 히트맵</div>',
                     unsafe_allow_html=True)
     with head_m:
         st.selectbox("검증방식", list(HEATMAP_METRICS), key=HM_KEY,
