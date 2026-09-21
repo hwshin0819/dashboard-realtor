@@ -4,7 +4,66 @@ import pandas as pd
 import streamlit as st
 
 import auth
+import cp_stats as cs
+import cp_store
 import data_store as ds
+
+
+def _cp_source_section():
+    """CP 원본 업로드 — 매월 새 엑셀을 여기서 갈아끼운다.
+
+    저장소가 공개라 원본을 git에 넣을 수 없고, Streamlit Cloud는 재배포마다
+    파일시스템이 초기화된다. 그래서 파일이 아니라 DB(cp_raw)에 둔다.
+    """
+    st.divider()
+    st.subheader("CP 원본 업로드")
+    st.caption(
+        f"`{cs.XLSX_NAME}`(시트 rawdata)를 올리면 CP 현황 메뉴가 그 자료로 다시 계산됩니다. "
+        "파일에 들어 있는 연월만 교체하므로, 전체 누적본을 올리든 새 달치만 올리든 "
+        "결과가 같고 같은 파일을 두 번 올려도 행이 늘지 않습니다.")
+
+    try:
+        cur = cp_store.summary()
+    except Exception as e:
+        st.error(f"CP 원본 테이블을 읽지 못했습니다: {e}")
+        return
+    if cur.empty:
+        st.info("아직 올라온 원본이 없습니다.")
+    else:
+        st.dataframe(cur, use_container_width=True, hide_index=True)
+        st.caption(f"총 {int(cur['행 수'].sum()):,}행 · {len(cur)}개 연월")
+
+    up = st.file_uploader("엑셀 파일 (.xlsx)", type=["xlsx"], key="cp_raw_upload")
+    if up is None:
+        return
+
+    try:
+        df = cp_store.read_excel(up)
+    except Exception as e:
+        st.error(f"읽지 못했습니다 — {e}")
+        return
+
+    months = cp_store.months_in(df)
+    have = set(cur["연월구분"]) if not cur.empty else set()
+    add = [m for m in months if m not in have]
+    rep = [m for m in months if m in have]
+    st.success(f"{len(df):,}행 · 연월 {', '.join(months)}")
+    if rep:
+        st.warning("교체될 연월: " + ", ".join(rep))
+    if add:
+        st.info("새로 추가될 연월: " + ", ".join(add))
+
+    if st.button("이 파일로 반영", type="primary", key="cp_raw_apply"):
+        with st.spinner("적재 중… 행이 많아 30초 이상 걸릴 수 있습니다."):
+            try:
+                r = cp_store.replace_months(df)
+            except Exception as e:
+                st.error(f"적재 실패 — {e}")
+                return
+        st.cache_data.clear()
+        st.success(
+            f"반영했습니다. {r['inserted']:,}행 적재 · 전체 {r['before']:,} → {r['after']:,}행")
+        st.rerun()
 
 
 def render():
@@ -112,3 +171,5 @@ def render():
                 ds.save_users(users)
                 st.success(f"'{del_target}' 계정을 삭제했습니다.")
                 st.rerun()
+
+    _cp_source_section()

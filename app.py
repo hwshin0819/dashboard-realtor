@@ -11,6 +11,7 @@ import auth
 import theme
 from pages_content import (
     brokers,
+    cp_status,
     transactions,
     industry_trends,
     webhooks,
@@ -122,6 +123,8 @@ elif selected_page == auth.PAGE_TRANSACTIONS:
     transactions.render()
 elif selected_page == auth.PAGE_INDUSTRY_TRENDS:
     industry_trends.render()
+elif selected_page == auth.PAGE_CP_STATUS:
+    cp_status.render()
 elif selected_page == auth.PAGE_BROKERS:
     st.title(auth.PAGE_BROKERS)
 
