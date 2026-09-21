@@ -152,6 +152,13 @@ _EXTRA_CSS = f"""
 .st-key-cp_root #cpdrill tr.sido td,
 .st-key-cp_root #rgdrill tr.sido td {{ font-weight:600; }}
 
+/* 라벨이 보이는 세그먼트를 오른쪽 끝으로. 묶음 자체를 내용 너비로 줄여 margin-left:auto로
+   밀면, 라벨은 왼쪽 '기준'과 마찬가지로 첫 버튼 위에 남는다(라벨만 따로 우측 정렬하면
+   버튼 묶음과 떨어져 보인다). */
+.st-key-cp_root .st-key-cp_t1_scale [data-testid="stButtonGroup"] {{
+    width:fit-content; margin-left:auto;
+}}
+
 /* 세그먼트 버튼 — 다른 메뉴(실거래량 동향 '빠른 선택')와 같은 모양으로 통일한다.
    선택된 것만 초록 배경+흰 글자, 나머지는 회색 테두리.
    높이 38px은 옆에 서는 셀렉트박스에 맞춘 값이다(기본 32px이면 밑단이 떠 보인다). */
@@ -1290,41 +1297,29 @@ def _attr_frame(cps, mat, tot, axis_names):
     return pd.DataFrame(recs)
 
 
-ZONE_KEY = "cp_t2_zone"
-
-
-def _clicked_zone(event, zones, rows):
-    """누적 막대에서 클릭한 (CP, 권역)을 뽑는다. trace 순서가 곧 zones 순서다.
-    선택이 남아 있는 동안 이벤트가 계속 오므로, 호출하는 쪽에서 이전 값과 비교한다."""
-    pts = ((event or {}).get("selection") or {}).get("points") or []
-    for pt in pts:
-        ci, cp = pt.get("curve_number"), pt.get("y")
-        if isinstance(ci, int) and 0 <= ci < len(zones) and cp in rows:
-            return (cp, zones[ci])
-    return None
-
-
-def _zone_detail(D, T, include_hg, cp, zone):
-    """권역 막대를 눌렀을 때 아래에 펼치는 그 권역 안의 시·도 > 시·군·구 표."""
-    mine = list(cs.PROPTIER_PARTS) if cp == cs.PROPTIER else [cp]
-    frame = _region_drill_frame(D, mine, cs.market_cps(D, include_hg), T["i"], cp)
+def _zone_detail(D, selected, T, include_hg, zone, stamp):
+    """권역 버튼을 눌렀을 때 아래에 펼치는 그 권역 안의 시·도 > 시·군·구 표."""
+    lab = _own(selected)
+    mine = (cs.market_cps(D, include_hg) if selected == ALL
+            else list(cs.PROPTIER_PARTS) if selected == cs.PROPTIER else [selected])
+    frame = _region_drill_frame(D, mine, cs.market_cps(D, include_hg), T["i"], lab)
     frame = frame[frame["권역"] == zone]
 
-    head, btn = st.columns([4, 1])
+    head, dl = st.columns([3, 1])
     head.markdown('<div class="ov-panel-title" style="font-size:.92rem;">'
-                  f'{cp} · {zone} 지역별 세부</div>', unsafe_allow_html=True)
-    with btn:
-        if st.button("닫기", key="cp_t2_zone_close", use_container_width=True):
-            st.session_state[ZONE_KEY] = None
-            st.rerun()
+                  f'{lab} · {zone} 지역별 세부</div>', unsafe_allow_html=True)
     if frame.empty:
-        st.info(f"{cp}는 이 시점 {zone}에 등록한 매물이 없습니다.")
+        st.info(f"{_eun(lab)} 이 시점 {zone}에 등록한 매물이 없습니다.")
         return
-    st.markdown(_region_drill_html(D, frame, cp), unsafe_allow_html=True)
+    with dl:
+        _dl_button(frame, f"권역세부_{_cp_label(selected)}_{zone}_{stamp}",
+                   "cp_t2_zone_dl", "권역세부")
+    st.markdown(_region_drill_html(D, frame, lab), unsafe_allow_html=True)
     st.markdown(
         f'<div class="ov-footnote">시·도 행을 누르면 시·군·구까지 펼쳐진다. '
-        f'{cp} 내 구성비는 <b>전국</b> 매물 기준이라 이 표의 합({_pct(frame[f"{cp} 내 구성비(%)"].sum(), 1)})이 '
-        f'곧 위 막대의 {zone} 비중이다.</div>', unsafe_allow_html=True)
+        f'{lab} 내 구성비는 <b>전국</b> 매물 기준이라 이 표의 합'
+        f'({_pct(frame[f"{lab} 내 구성비(%)"].sum(), 1)})이 곧 위 막대의 {zone} 비중이다.'
+        '</div>', unsafe_allow_html=True)
 
 
 def _tab_cp(D, selected, T, include_hg):
@@ -1334,12 +1329,10 @@ def _tab_cp(D, selected, T, include_hg):
     stamp = D["months"][i]
     # 보기 상태를 먼저 읽어야 컨트롤 줄을 몇 칸으로 나눌지 정할 수 있다
     # (위젯을 만들기 전에 읽어도, 바뀌면 Streamlit이 다시 실행하며 갱신해준다).
+    # 칸 너비를 보기 모드와 무관하게 고정한다. 예전엔 표 보기에서만 셋으로 쪼개서,
+    # 모드를 바꿀 때마다 차트/표 토글이 왼쪽으로 200px쯤 튀었다.
     view = st.session_state.get("cp_t2_view") or "차트 보기"
-    if view == "표로 보기":
-        c1, c2, c3 = st.columns([1.45, 1.0, 0.75])
-    else:
-        c1, c2 = st.columns([1.7, 1.05])
-        c3 = None
+    c1, c2, c3 = st.columns([1.72, 1.0, 0.48])
     with c1:
         pick = st.segmented_control(
             "구분", ["권역별 편중도", "매물 유형 구성"], default="권역별 편중도",
@@ -1359,27 +1352,25 @@ def _tab_cp(D, selected, T, include_hg):
     me = set(cs.PROPTIER_PARTS) if selected == cs.PROPTIER else {selected}
 
     if view == "차트 보기":
-        zoned = pick == "권역별 편중도"
-        opened = st.session_state.get(ZONE_KEY) if zoned else None
         # 특정 CP를 고르면 그 막대만 선명하게, 나머지는 흐리게. 'CP사 전체'면 전부 선명하게.
-        event = st.plotly_chart(
+        st.plotly_chart(
             _stacked100(cps, axis_names, mat,
                         highlight=None if selected == ALL else me),
-            use_container_width=True, config={"displayModeBar": False},
-            on_select="rerun" if zoned else "ignore", selection_mode="points",
-            key=f"cp_t2_chart_{axis_key}")
-        if not zoned:
+            use_container_width=True, config={"displayModeBar": False})
+        if pick != "권역별 편중도":
             return
-        st.markdown('<div class="ov-footnote">막대를 누르면 그 권역 안의 시·도 상세가 '
-                    '아래에 열린다.</div>', unsafe_allow_html=True)
-        # 선택이 유지되는 동안 같은 이벤트가 계속 돌아오므로 값이 바뀔 때만 rerun한다.
-        hit = _clicked_zone(event, axis_names, cps)
-        if hit and hit != opened:
-            st.session_state[ZONE_KEY] = hit
-            st.rerun()
-        if opened:
-            _rule(top=18)
-            _zone_detail(D, T, include_hg, *opened)
+
+        z1, z2 = st.columns([1.1, 2.6])
+        with z1:
+            zone = st.segmented_control(
+                "권역 세부", D["zones"], default=None, key="cp_t2_zone",
+                label_visibility="collapsed")
+        z2.markdown('<div class="ov-footnote" style="padding-top:11px;">'
+                    '권역을 누르면 그 안의 시·도 상세가 아래에 열린다. '
+                    '한 번 더 누르면 닫힌다.</div>', unsafe_allow_html=True)
+        if zone:
+            _rule(top=14)
+            _zone_detail(D, selected, T, include_hg, zone, stamp)
         return
 
     if pick == "권역별 편중도":
@@ -1389,10 +1380,9 @@ def _tab_cp(D, selected, T, include_hg):
                           else [selected]))
         lab = _own(selected)
         frame = _region_drill_frame(D, mine_cps, cs.market_cps(D, include_hg), i, lab)
-        if c3 is not None:
-            with c3:
-                _dl_button(frame, f"CP별_권역편중_{_cp_label(selected)}_{stamp}",
-                           "cp_t2_dl", "권역편중")
+        with c3:
+            _dl_button(frame, f"CP별_권역편중_{_cp_label(selected)}_{stamp}",
+                       "cp_t2_dl", "권역편중")
         st.markdown(_region_drill_html(D, frame, lab), unsafe_allow_html=True)
         st.markdown(
             f'<div class="ov-footnote">시·도 행을 누르면 그 아래 시·군·구가 펼쳐진다. '
@@ -1401,9 +1391,8 @@ def _tab_cp(D, selected, T, include_hg):
         return
 
     frame = _attr_frame(cps, mat, tot, axis_names)
-    if c3 is not None:
-        with c3:
-            _dl_button(frame, f"CP별_매물유형_{stamp}", "cp_t2_dl", "매물유형")
+    with c3:
+        _dl_button(frame, f"CP별_매물유형_{stamp}", "cp_t2_dl", "매물유형")
 
     head = "".join(f'<th colspan="3">{n}</th>' for n in axis_names)
     sub = "".join('<th class="dim">건수</th><th>구성비</th><th>점유율</th>'
