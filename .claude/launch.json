@@ -3,7 +3,7 @@
   "configurations": [
     {
       "name": "streamlit-dashboard",
-      "runtimeExecutable": ".venv\Scripts\streamlit.exe",
+      "runtimeExecutable": ".venv\\Scripts\\streamlit.exe",
       "runtimeArgs": ["run", "app.py", "--server.port", "9000", "--server.headless", "true"],
       "port": 9000
     }
