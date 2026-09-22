@@ -52,8 +52,9 @@ def national_trend() -> list:
 def geojson_path() -> str:
     return "data/korea_sido.geojson"
 
+import os
 
-_TASIS_JSON_PATH = "data/tasis_lifestyle_058.json"
+_TASIS_JSON_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "tasis_lifestyle_058.json")
 _tasis_cache = None
 
 
