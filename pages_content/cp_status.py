@@ -129,6 +129,7 @@ _EXTRA_CSS = f"""
 .st-key-cp_root .st-key-cp_mall_view,
 .st-key-cp_root .st-key-cp_t2_view,
 .st-key-cp_root .st-key-cp_t2_dl,
+.st-key-cp_root .st-key-cp_t2_zone_dl,
 .st-key-cp_root .st-key-cp_m_dl,
 .st-key-cp_root .st-key-cp_hm_dl {{
     display:flex; justify-content:flex-end; width:100%;
@@ -185,7 +186,7 @@ _EXTRA_CSS = f"""
 .st-key-cp_root .ov-narrow {{ max-width:620px; }}
 
 /* 검증방식 드롭다운은 너무 넓어지지 않게 */
-.st-key-cp_root .st-key-{HM_KEY} {{ max-width:220px; min-width:200px; margin-left:auto; }}
+.st-key-cp_root .st-key-{HM_KEY} {{ max-width:300px; min-width:200px; margin-left:auto; }}
 
 .st-key-cp_root .cp-note {{ font-size:.83rem; line-height:1.75; }}
 .st-key-cp_root .cp-note b {{ color:{INK}; }}
@@ -545,12 +546,6 @@ def _dl_button(df, stem, key, sheet="data"):
     """표 우측 상단에 붙는 엑셀 내려받기 버튼. 화면 표와 같은 값을 서식 없는 숫자로 넣는다."""
     st.download_button("엑셀 다운로드", _xlsx(df, sheet),
                        file_name=f"{stem}.xlsx", mime=XLSX_MIME, key=key)
-
-
-def _dl_row(df, stem, key, sheet="data"):
-    _, right = st.columns([3, 1])
-    with right:
-        _dl_button(df, stem, key, sheet)
 
 
 def _region_drill_cols(lab):
@@ -936,7 +931,9 @@ def _region_methods_all(D, T, include_hg, focus):
     sidos = D["sidos"]
     idx = [D["methods"].index(p) for p in HEATMAP_METRICS[focus]]
 
-    head_l, head_m, head_r = st.columns([1.15, 0.95, 1.25])
+    # 드롭다운·지표·엑셀을 오른쪽에 붙여 한 줄로 둔다. 엑셀 버튼을 따로 그리면
+    # 줄이 하나 더 생기면서 밑으로 떨어진다(예전 _dl_row가 그랬다).
+    head_l, head_m, head_r, head_d = st.columns([0.5, 1.3, 1.1, 0.6])
     head_l.markdown('<div class="ov-panel-title" style="padding-top:9px;">지역 히트맵</div>',
                     unsafe_allow_html=True)
     with head_m:
@@ -986,13 +983,16 @@ def _region_methods_all(D, T, include_hg, focus):
     hm = hm.rename(columns={"index": "CP"})
     if fmt["digits"] == 0:
         hm[sidos] = hm[sidos].astype("Int64")
-    _dl_row(hm, f"지역히트맵_{focus}_{basis}_{D['months'][i]}", "cp_hm_dl", "히트맵")
+    with head_d:      # 위에서 잡아둔 헤더 칸에 나중에 채워 넣는다
+        _dl_button(hm, f"지역히트맵_{focus}_{basis}_{D['months'][i]}",
+                   "cp_hm_dl", "히트맵")
     st.plotly_chart(_heatmap(rows, sidos, z, **fmt),
                     use_container_width=True, config={"displayModeBar": False})
 
 
 
-def _section_methods(D, selected, T, include_hg, region=cs.NATION, view="그래프"):
+def _section_methods(D, selected, T, include_hg, region=cs.NATION, view="그래프",
+                     dl_slot=None):
     """view='그래프'면 CP/방식 축 차트, '표'면 시도 > 시군구 계층 표를 보여준다.
     제목과 컨트롤은 호출하는 쪽(render)이 그린다."""
     sel_i = T["i"]
@@ -1013,9 +1013,12 @@ def _section_methods(D, selected, T, include_hg, region=cs.NATION, view="그래�
             cps = list(cs.PROPTIER_PARTS)
         else:
             cps = [selected]
-        _dl_row(_drill_frame(D, cps, sel_i, region, methods, live0, tot_l0),
-                f"검증방식_지역_{_cp_label(selected)}_{region}_{D['months'][sel_i]}",
-                "cp_m_dl", "검증방식지역")
+        if dl_slot is not None:
+            with dl_slot:
+                _dl_button(
+                    _drill_frame(D, cps, sel_i, region, methods, live0, tot_l0),
+                    f"검증방식_지역_{_cp_label(selected)}_{region}_{D['months'][sel_i]}",
+                    "cp_m_dl", "검증방식지역")
         st.markdown(_drill_table(D, cps, sel_i, region, methods, live0, tot_l0),
                     unsafe_allow_html=True)
         st.markdown('<div class="ov-footnote">시·도 행을 누르면 그 아래 시·군·구가 펼쳐진다. '
@@ -1626,7 +1629,9 @@ def render():
             region = region if region in opts else cs.NATION
             st.markdown(f'<div class="ov-panel-title">지역별 검증 방식 · {region}</div>',
                         unsafe_allow_html=True)
-            c1, c2 = st.columns([1, 1.6])
+            # 칸 너비는 보기 모드와 무관하게 고정한다 — 엑셀 버튼이 나타나고 사라져도
+            # 그래프/표 토글이 제자리에 있어야 한다.
+            c1, c2, c3 = st.columns([1.72, 1.0, 0.48])
             with c1:
                 st.selectbox("지역", opts, key="cp_region", label_visibility="collapsed")
             with c2:
@@ -1634,4 +1639,4 @@ def render():
                                             key="cp_mall_view",
                                             label_visibility="collapsed") or "그래프"
 
-            _section_methods(D, selected, T, include_hg, region, view)
+            _section_methods(D, selected, T, include_hg, region, view, dl_slot=c3)
