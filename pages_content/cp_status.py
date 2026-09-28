@@ -224,6 +224,12 @@ _EXTRA_CSS = f"""
 .st-key-cp_root .st-key-cp_hg_user,
 .st-key-cp_root .st-key-cp_hg_forced {{ margin-top:27px; }}
 
+/* 지역별 검증 방식 줄 — 드롭다운을 엑셀 버튼 바로 왼쪽에 붙인다(칸 사이 기본
+   간격 16px을 줄여야 실제로 붙어 보인다). */
+.st-key-cp_root .st-key-cp_region_row [data-testid="stHorizontalBlock"] {{
+    gap:6px !important;
+}}
+
 /* 검증방식 드롭다운은 너무 넓어지지 않게 */
 .st-key-cp_root .st-key-{HM_KEY} {{ max-width:300px; min-width:200px; margin-left:auto; }}
 
@@ -832,12 +838,6 @@ def _section_rank(D, selected, T, include_hg):
         f'<th>{D["labels"][0]} 대비 누적</th><th>매물수</th><th>회원당 매물</th><th>커버 배수</th>'
         f"</tr></thead><tbody>{body}</tbody></table></div>",
         unsafe_allow_html=True)
-    st.markdown(
-        '<div class="ov-footnote">커버 배수 = 상세 행 회원수 합 ÷ 총계 회원수. '
-        '1보다 클수록 한 회원이 여러 지역·매물유형에 걸쳐 중복 계상됐다는 뜻이라, '
-        '이 값이 바로 “상세 회원수를 더하면 안 되는” 이유다. '
-        '회원수가 0인 CP(퇴출)와 합산 행인 프롭티어는 정의되지 않아 – 로 둔다.</div>',
-        unsafe_allow_html=True)
 
 
 def _detect_issues(D, include_hg, lo, hi):
@@ -1415,13 +1415,16 @@ def _tab_method(D, selected, T, include_hg):
     region = st.session_state.get("cp_region")
     region = region if region in opts else cs.NATION
     # 지역 선택 드롭다운은 옵션이 짧은 이름(전국/수도권/서울 등)뿐이라 넓을 필요가 없다 —
-    # 제목 칸을 필요한 만큼만 남기고 좁혀서, 드롭다운이 엑셀 버튼 바로 옆으로 붙게 한다.
-    c1, c2, c3 = st.columns([1.4, 0.6, 0.6])
-    with c1:
-        st.markdown(f'<div class="ov-panel-title" style="padding-top:9px;">'
-                    f'지역별 검증 방식 · {region}</div>', unsafe_allow_html=True)
-    with c2:
-        st.selectbox("지역", opts, key="cp_region", label_visibility="collapsed")
+    # 제목 칸을 필요한 만큼만 남기고 좁혀서, 드롭다운을 엑셀 버튼 바로 왼쪽에 붙인다
+    # (칸 사이 기본 간격(16px)까지 줄여야 진짜 붙어 보여서, 이 줄만 컨테이너로 감싸
+    # 간격을 좁힌다).
+    with st.container(key="cp_region_row"):
+        c1, c2, c3 = st.columns([1.4, 0.6, 0.6])
+        with c1:
+            st.markdown(f'<div class="ov-panel-title" style="padding-top:9px;">'
+                        f'지역별 검증 방식 · {region}</div>', unsafe_allow_html=True)
+        with c2:
+            st.selectbox("지역", opts, key="cp_region", label_visibility="collapsed")
 
     _section_methods(D, selected, T, include_hg, region, dl_slot=c3)
 
@@ -1610,7 +1613,6 @@ def render():
                 include_hg = True
             else:
                 include_hg = st.toggle("한공협 포함", key="cp_hg_user")
-                st.caption("분모(시장 전체)에 협회를 넣을지")
 
         _kpi(D, selected, T, include_hg)
 
