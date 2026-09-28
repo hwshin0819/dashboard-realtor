@@ -1220,13 +1220,8 @@ def _section_notes(D):
 # ── KPI ──────────────────────────────────────────────────────────────────────
 # ── 탭 본문 ──────────────────────────────────────────────────────────────────
 def _tab_share(D, selected, T, include_hg):
-    """탭1 시장 점유율 — 전체 모드는 비교 관점(히트맵·집계표) 그대로.
-    개별 모드는 히트맵(검증 방식 탭 지도와 중복)을 빼고,
-    집계표만 접어서(기본 닫힘) 필요할 때만 다른 CP와 비교해보게 한다."""
-    if selected != ALL:
-        with st.expander("다른 CP와 비교해서 보기"):
-            _section_rank(D, selected, T, include_hg)
-        return
+    """탭1 시장 점유율 — 전체 모드 전용(개별 CP는 탭 자체가 없다, render() 참고).
+    비교 관점의 히트맵과 집계표를 보여준다."""
     _region_all(D, selected, T, include_hg)
     _rule()
     _section_rank(D, selected, T, include_hg)
@@ -1613,21 +1608,30 @@ def render():
 
         _kpi(D, selected, T, include_hg)
 
+        if selected != ALL:
+            # 개별 CP는 KPI 카드에 이미 내 수치가 다 있어 '시장 점유율' 탭을 통째로
+            # 둘 자리가 없다 — 유일하게 남아 있던 내용(다른 CP와 비교)만 탭 밖,
+            # KPI 바로 아래에 접어서 둔다.
+            with st.expander("다른 CP와 비교해서 보기"):
+                _section_rank(D, selected, T, include_hg)
+
         # 다른 메뉴(중개업 시장 동향·공인중개사 현황)와 같은 탭 UI.
         # st.tabs는 숨은 탭 내용까지 전부 렌더하지만 서버측 40ms 수준이라 체감 차이가 없다.
-        # 특이사항은 전 CP 이슈 목록이라 개별 CP를 볼 땐 탭 자체를 빼서 헷갈리지 않게 한다.
-        names = SECTIONS + ([SECTION_ETC] if selected == ALL else [])
+        # 시장 점유율·특이사항은 전체 모드 전용이라 개별 CP를 볼 땐 둘 다 뺀다.
+        names = (SECTIONS + [SECTION_ETC]) if selected == ALL else SECTIONS[1:]
         tabs = st.tabs(names)
 
-        with tabs[0]:
-            _tab_share(D, selected, T, include_hg)
-
-        with tabs[1]:
-            _tab_method(D, selected, T, include_hg)
-
-        with tabs[2]:
-            _tab_compose(D, selected, T, include_hg)
-
         if selected == ALL:
+            with tabs[0]:
+                _tab_share(D, selected, T, include_hg)
+            with tabs[1]:
+                _tab_method(D, selected, T, include_hg)
+            with tabs[2]:
+                _tab_compose(D, selected, T, include_hg)
             with tabs[3]:
                 _tab_etc(D, selected, T, include_hg)
+        else:
+            with tabs[0]:
+                _tab_method(D, selected, T, include_hg)
+            with tabs[1]:
+                _tab_compose(D, selected, T, include_hg)
