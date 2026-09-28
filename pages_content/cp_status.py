@@ -182,9 +182,6 @@ _EXTRA_CSS = f"""
 .st-key-cp_root .st-key-cp_hg_user,
 .st-key-cp_root .st-key-cp_hg_forced {{ margin-top:27px; }}
 
-/* 열이 몇 개 안 되는 표는 화면 폭을 다 쓰면 숫자 사이가 벌어져 오히려 읽기 어렵다 */
-.st-key-cp_root .ov-narrow {{ max-width:620px; }}
-
 /* 검증방식 드롭다운은 너무 넓어지지 않게 */
 .st-key-cp_root .st-key-{HM_KEY} {{ max-width:300px; min-width:200px; margin-left:auto; }}
 
@@ -202,6 +199,14 @@ def _num(v, dec=0, dash="–"):
     if v is None:
         return dash
     return f"{v:,.{dec}f}"
+
+
+def _databar(inner, pct, color):
+    """구성비만큼 셀 배경에 옅은 막대를 깐다. 표와 별도로 막대 차트를 하나 더 그리면
+    같은 '구성비' 숫자를 두 번 보여주는 셈이라, 차트를 없애고 표 한 칸에 합친다."""
+    p = 0.0 if not pct else max(0.0, min(100.0, pct))
+    return (f'<td style="background:linear-gradient(to right,{color}28 {p:.3f}%,'
+            f'transparent {p:.3f}%)">{inner}</td>')
 
 
 def _pct(v, dec=2, dash="–"):
@@ -1071,40 +1076,14 @@ def _section_methods(D, selected, T, include_hg, region=cs.NATION, view="그래�
     live = [j for j in range(len(methods)) if tot_l[j] > 0 or cs.nz(mine_l[j]) > 0]
 
     order = sorted(live, key=lambda j: -cs.nz(mine_l[j]))
-    names = [methods[j] for j in order]
-    vals = [cs.nz(mine_l[j]) for j in order]
-    bar_c = [series_color(selected, selected)] * len(order)
-
-    # 집주인 방식 3종 소계를 맨 위에 어두운 색으로 하나 더 세운다. 개별 방식과 색이
-    # 달라야 합계 막대라는 게 보이고, CP 색과도 겹치지 않는다.
     own = [j for j in order if methods[j] in METHOD_SETS["집주인 방식"]]
-    if own:
-        names.insert(0, "집주인 방식")
-        vals.insert(0, sum(cs.nz(mine_l[j]) for j in own))
-        bar_c.insert(0, INK)
+    color = series_color(selected, selected)
 
-    fig = go.Figure(go.Bar(
-        x=vals, y=names, orientation="h", marker_color=bar_c,
-        text=[f"{v:,.0f} ({v / mine_sum * 100:.1f}%)" if mine_sum else ""
-              for v in vals],
-        textposition="auto", insidetextanchor="end",
-        textfont=dict(size=11), cliponaxis=False,
-        hovertemplate="%{y} · %{x:,.0f}건<extra></extra>",
-    ))
-    step, top = _axis(max(vals or [1]))
-    fig.update_layout(
-        xaxis=dict(range=[0, top], dtick=step, gridcolor=LINE, title=f"{lab} 매물 수"),
-        yaxis=dict(autorange="reversed", showgrid=False),
-        showlegend=False, bargap=0.25,
-    )
-    c1, c2 = st.columns([1.15, 1])
+    # 예전엔 왼쪽에 막대 차트, 오른쪽에 이 표를 나란히 뒀는데, 차트가 보여주는 값이
+    # 표의 '구성비' 열과 완전히 같은 숫자였다. 차트를 없애고 그 열 자체를 데이터
+    # 막대로 그려서 표 한 칸 안에서 숫자와 비율을 같이 보게 한다.
+    c1, c2 = st.columns([1.4, 1])
     with c1:
-        st.markdown('<div class="ov-panel-title" style="font-size:.92rem;">검증방식 구성비</div>',
-                    unsafe_allow_html=True)
-        st.plotly_chart(_base_layout(fig, height=40 * len(names) + 90),
-                        use_container_width=True, config={"displayModeBar": False})
-
-    with c2:
         st.markdown('<div class="ov-panel-title" style="font-size:.92rem;">방식별 시장 점유율</div>',
                     unsafe_allow_html=True)
         body = ""
@@ -1112,21 +1091,22 @@ def _section_methods(D, selected, T, include_hg, region=cs.NATION, view="그래�
             sh = (cs.nz(mine_l[j]) / tot_l[j] * 100) if tot_l[j] else None
             mix = (cs.nz(mine_l[j]) / mine_sum * 100) if mine_sum else None
             body += (f'<tr><td class="region name">{methods[j]}</td>'
-                     f'<td>{_num(mine_l[j])}</td><td>{_pct(mix, 1)}</td>'
-                     f'<td class="dim">{_num(tot_l[j])}</td><td>{_pct(sh)}</td>'
+                     f'<td>{_num(mine_l[j])}</td>'
+                     + _databar(_pct(mix, 1), mix, color)
+                     + f'<td class="dim">{_num(tot_l[j])}</td><td>{_pct(sh)}</td>'
                      + (f'<td class="dim">{_num(mine_m[j])}</td>' if nation else '')
                      + '</tr>')
 
         # 집주인 방식 소계 — 3종을 합친 값. 회원수는 한 회원이 여러 방식에 중복
         # 계상돼 더할 수 없으므로 – 로 둔다(매물수만 합산한다).
-        own = [j for j in order if methods[j] in METHOD_SETS["집주인 방식"]]
         if own:
             om = sum(cs.nz(mine_l[j]) for j in own)
             ot = sum(tot_l[j] for j in own)
+            om_mix = (om / mine_sum * 100) if mine_sum else None
             body += (f'<tr class="me"><td class="region name">집주인 방식</td>'
                      f'<td>{_num(om)}</td>'
-                     f'<td>{_pct((om / mine_sum * 100) if mine_sum else None, 1)}</td>'
-                     f'<td class="dim">{_num(ot)}</td>'
+                     + _databar(_pct(om_mix, 1), om_mix, INK)
+                     + f'<td class="dim">{_num(ot)}</td>'
                      f'<td>{_pct((om / ot * 100) if ot else None)}</td>'
                      + ('<td class="dim">–</td>' if nation else '')
                      + '</tr>')
@@ -1143,23 +1123,31 @@ def _section_methods(D, selected, T, include_hg, region=cs.NATION, view="그래�
                 + '. 회원수는 한 회원이 여러 방식에 중복 계상돼 더할 수 없어 – 로 둔다.'
                   '</div>', unsafe_allow_html=True)
 
-    # 검증방식 x 권역 교차표 (지역을 이미 좁혔으면 중복이라 생략)
-    vz = (D["d"][selected]["vz"][sel_i] or []) if nation else []
-    if vz and any(row for row in vz):
-        body = ""
-        for j in order:
-            cap = cs.nz(vz[0][j]) if vz[0] else 0
-            loc = cs.nz(vz[1][j]) if len(vz) > 1 and vz[1] else 0
-            tt = cap + loc
-            body += (f'<tr><td class="region name">{methods[j]}</td>'
-                     f'<td>{_num(cap)}</td><td>{_num(loc)}</td><td>{_num(tt)}</td>'
-                     f'<td>{_pct((cap / tt * 100) if tt else None, 1)}</td></tr>')
-        st.markdown(
-            '<div class="ov-panel-title" style="font-size:.92rem; margin-top:14px;">지역별 비중</div>'
-            '<div class="ov-table-scroll ov-narrow"><table class="ov-table"><thead><tr>'
-            '<th class="region name">방식</th><th>수도권</th><th>지방</th><th>합계</th>'
-            '<th>수도권 비중</th>'
-            f"</tr></thead><tbody>{body}</tbody></table></div>", unsafe_allow_html=True)
+    # 검증방식 x 권역 교차표 — 차트 자리였던 왼쪽 대신 오른쪽에 둔다(지역을 이미
+    # 좁혀서 보고 있으면 수도권/지방 재분해가 의미 없어 안내만 띄운다).
+    with c2:
+        st.markdown('<div class="ov-panel-title" style="font-size:.92rem;">지역별 비중</div>',
+                    unsafe_allow_html=True)
+        vz = (D["d"][selected]["vz"][sel_i] or []) if nation else []
+        if not nation:
+            st.info("이미 특정 지역으로 좁혀서 보고 있어 수도권/지방 비중은 "
+                    "여기서는 표시하지 않습니다.")
+        elif not (vz and any(row for row in vz)):
+            st.info(f"{_eun(selected)} 권역별 검증방식 자료가 없습니다.")
+        else:
+            body = ""
+            for j in order:
+                cap = cs.nz(vz[0][j]) if vz[0] else 0
+                loc = cs.nz(vz[1][j]) if len(vz) > 1 and vz[1] else 0
+                tt = cap + loc
+                body += (f'<tr><td class="region name">{methods[j]}</td>'
+                         f'<td>{_num(cap)}</td><td>{_num(loc)}</td><td>{_num(tt)}</td>'
+                         f'<td>{_pct((cap / tt * 100) if tt else None, 1)}</td></tr>')
+            st.markdown(
+                '<div class="ov-table-scroll"><table class="ov-table"><thead><tr>'
+                '<th class="region name">방식</th><th>수도권</th><th>지방</th><th>합계</th>'
+                '<th>수도권 비중</th>'
+                f"</tr></thead><tbody>{body}</tbody></table></div>", unsafe_allow_html=True)
 
     notes = []
     if D["months"][sel_i] in D["meta"]["restored_months"]:
