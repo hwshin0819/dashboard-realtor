@@ -8,6 +8,7 @@ import re
 
 import psycopg2
 import psycopg2.extras
+import psycopg2.pool
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -257,21 +258,49 @@ class _Cursor:
 
 
 class _Conn:
-    """psycopg2 커넥션을 sqlite3.Connection과 같은 인터페이스(conn.execute(...))로 감싼다."""
+    """psycopg2 커넥션을 sqlite3.Connection과 같은 인터페이스(conn.execute(...))로 감싼다.
+    close()는 실제로 끊지 않고 풀에 반납한다 — 호출하는 쪽 코드(매 함수마다 get_conn()...close())는
+    그대로 두고, 커넥션 자체만 재사용해 매번 새로 맺던 TCP+TLS 핸드셰이크 비용을 없앤다."""
 
     def __init__(self, pg_conn):
         self._conn = pg_conn
 
+    def _reconnect(self):
+        """풀에 오래 놀고 있던 커넥션을 Supabase 쪽에서 먼저 끊어버린 경우 대비.
+        죽은 커넥션은 풀에 돌려주지 않고 진짜로 버린 뒤 새로 하나 받아온다."""
+        try:
+            _pool.putconn(self._conn, close=True)
+        except Exception:
+            pass
+        self._conn = _pool.getconn()
+
+    def _run(self, fn):
+        """fn(conn)을 실행하고, 커넥션이 죽어 있었으면(Supabase 쪽 idle timeout 등) 한 번만
+        재연결 후 재시도한다."""
+        try:
+            return fn(self._conn)
+        except (psycopg2.OperationalError, psycopg2.InterfaceError):
+            self._reconnect()
+            return fn(self._conn)
+
     def execute(self, query: str, params=()) -> _Cursor:
-        cur = self._conn.cursor()
-        cur.execute(_translate(query), params)
-        self._conn.commit()
-        return _Cursor(cur)
+        q = _translate(query)
+
+        def _do(conn):
+            cur = conn.cursor()
+            cur.execute(q, params)
+            conn.commit()
+            return cur
+
+        return _Cursor(self._run(_do))
 
     def executescript(self, script: str):
-        cur = self._conn.cursor()
-        cur.execute(script)
-        self._conn.commit()
+        def _do(conn):
+            cur = conn.cursor()
+            cur.execute(script)
+            conn.commit()
+
+        self._run(_do)
 
     def execute_values(self, query: str, values: list, template: str = None, page_size: int = 1000):
         """대량 INSERT/UPDATE 전용. 건마다 conn.execute()를 부르면 네트워크 DB에서는
@@ -279,24 +308,33 @@ class _Conn:
         한 번에 묶어 보낸다. query는 'INSERT INTO t (...) VALUES %s ...' 형태."""
         if not values:
             return 0
-        cur = self._conn.cursor()
-        psycopg2.extras.execute_values(cur, query, values, template=template, page_size=page_size)
-        self._conn.commit()
-        return cur.rowcount
+
+        def _do(conn):
+            cur = conn.cursor()
+            psycopg2.extras.execute_values(cur, query, values, template=template, page_size=page_size)
+            conn.commit()
+            return cur.rowcount
+
+        return self._run(_do)
 
     def commit(self):
         self._conn.commit()
 
     def close(self):
-        self._conn.close()
+        _pool.putconn(self._conn)
 
 
+# 매번 새 커넥션을 맺지 않고 풀에서 빌려 쓴다 — 페이지 하나 열 때 get_conn()이 5~6번씩
+# 불리는데, 그때마다 네트워크 너머 Supabase와 새로 TCP+TLS 핸드셰이크를 하면 그 지연이
+# 그대로 곱해져 체감 속도가 느려진다. minconn=1, maxconn=10은 이 앱 동시 사용자 규모
+# (사내 몇 명 + 소수 공개 접속) 대비 여유 있는 값이다.
+_pool = psycopg2.pool.ThreadedConnectionPool(1, 10, DB_URL)
 _schema_ready = False
 
 
 def get_conn() -> _Conn:
     global _schema_ready
-    pg_conn = psycopg2.connect(DB_URL)
+    pg_conn = _pool.getconn()
     conn = _Conn(pg_conn)
     if not _schema_ready:
         conn.executescript(SCHEMA)

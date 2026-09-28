@@ -15,8 +15,8 @@ import region_utils as ru
 LIVE_START_MONTH = "2026-09"
 
 # DB가 Supabase(네트워크 너머)라 매번 새로 쿼리하면 왕복 지연이 쌓인다. 수집기가 대략 시간
-# 단위로 도는 정도라 5분 캐시면 최신성 손해는 거의 없이 체감 속도를 크게 줄인다.
-_CACHE_TTL = 300
+# 단위로 도는 정도라 15분 캐시로도 최신성 손해는 거의 없다.
+_CACHE_TTL = 900
 
 
 def _load_active_snapshots(conn):
