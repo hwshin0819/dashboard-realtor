@@ -13,6 +13,7 @@
 숫자를 읽을 때 반드시 알아야 하는 함정은 cp_stats.py 상단 주석과 '데이터 주의사항' 섹션에 있다.
 """
 import io
+import json
 import math
 
 import pandas as pd
@@ -21,7 +22,18 @@ import streamlit as st
 
 import auth
 import cp_stats as cs
+import industry_market_stats as ims  # 시/도 GeoJSON 경로만 빌려 쓴다(중개업 시장 동향과 공용)
+import region_utils as ru            # 시/도 중심 좌표(라벨 위치)도 그쪽과 공용
 from theme import ACCENT_SOFT, CARD, GREEN, GREEN_DEEP, INK, LINE, MUTED, VERMILION
+
+# geojson 피처의 code(행정구역코드 앞 2자리) <-> cp_stats가 쓰는 시/도 짧은 이름.
+# industry_trends.py가 쓰는 것과 같은 파일(data/korea_sido.geojson, KOSTAT 코드)이라
+# 매핑도 고정값이다 — 이 파일이 바뀔 일은 없다.
+SIDO_CODE = {
+    "서울": "11", "부산": "21", "대구": "22", "인천": "23", "광주": "24", "대전": "25",
+    "울산": "26", "세종": "29", "경기": "31", "강원": "32", "충북": "33", "충남": "34",
+    "전북": "35", "전남": "36", "경북": "37", "경남": "38", "제주": "39",
+}
 
 # 계열 색은 '항목'에 고정한다 — 순위가 바뀌어도 색이 따라 움직이면 추이를 잘못 읽게 된다.
 SERIES_COLORS = {
@@ -480,6 +492,55 @@ def _heatmap(rows, cols, z, *, unit="%", digits=2, suffix="", height=None,
                  line=dict(color=GREEN_DEEP, width=2), fillcolor="rgba(0,0,0,0)")
             for k, r in enumerate(rows) if r in hset
         ])
+    return fig
+
+
+@st.cache_data
+def _load_sido_geo():
+    with open(ims.geojson_path(), encoding="utf-8") as f:
+        return json.load(f)
+
+
+def _sido_choropleth(sidos, values, *, digits=2, suffix="%", height=480):
+    """CP 한 곳의 지역별 분포를 21행 격자 대신 실제 시/도 지도로 보여준다 — 어디에
+    쏠려 있는지 읽으려고 21개 CP 사이에서 한 줄을 찾을 필요가 없다.
+
+    D["sidos"]는 항상 SIDO_CODE의 17개 키와 정확히 일치한다(cp_stats.SIDO_ORDER로
+    고정) — 그래서 아래는 둘이 1:1이라고 가정하고 방어적 필터 없이 바로 dict로 짠다.
+
+    시/군/구 단위 경계 데이터는 이 프로젝트에 없어(중개업 시장 동향도 시/도까지만
+    쓴다) 시/도 17개 단위로 그린다. 값이 없는 시/도는 옅게 그대로 두되(0과는 다름),
+    hover·라벨에는 '–'로 구분해 0과 결측을 헷갈리지 않게 한다."""
+    geo = _load_sido_geo()
+    codes = [f["properties"]["code"] for f in geo["features"]]
+    code_to_sido = {v: k for k, v in SIDO_CODE.items()}
+    val_of = {SIDO_CODE[s]: v for s, v in zip(sidos, values)}
+    label_of = {s: (f"{s}<br>–" if v is None else f"{s}<br>{_num(v, digits)}{suffix}")
+                for s, v in zip(sidos, values)}
+
+    z = [val_of.get(c) for c in codes]
+    zmax = max((v for v in z if v is not None), default=1)
+
+    fig = go.Figure(go.Choropleth(
+        geojson=geo, locations=codes, z=[v if v is not None else 0 for v in z],
+        featureidkey="properties.code", zmin=0, zmax=zmax or 1,
+        colorscale=[[0, "#EAF3EE"], [1, GREEN_DEEP]], showscale=False,
+        marker_line_color=CARD, marker_line_width=1.5,
+        text=[label_of.get(code_to_sido.get(c, ""), "") for c in codes],
+        hovertemplate="%{text}<extra></extra>",
+    ))
+
+    fig.add_trace(go.Scattergeo(
+        lon=[ru.SIDO_LATLON[s][1] for s in sidos], lat=[ru.SIDO_LATLON[s][0] for s in sidos],
+        text=[label_of[s] for s in sidos], mode="text",
+        textfont=dict(size=10, color=INK), hoverinfo="skip", showlegend=False,
+    ))
+    fig.update_geos(
+        visible=False, showcountries=False, showcoastlines=False, showland=False,
+        lataxis_range=[32.8, 38.8], lonaxis_range=[124.4, 131.0],
+        projection_type="mercator", bgcolor=CARD,
+    )
+    fig.update_layout(paper_bgcolor=CARD, margin=dict(l=0, r=0, t=0, b=0), height=height)
     return fig
 
 
@@ -954,7 +1015,9 @@ def _methods_all_chart(D, T, include_hg, region, methods, live):
 
 
 def _region_methods_all(D, selected, T, include_hg, focus):
-    """CP x 시도 히트맵 — 어느 CP가 어느 지역에 그 방식을 밀고 있는지."""
+    """전체 모드: CP x 시도 히트맵 — 어느 CP가 어느 지역에 그 방식을 밀고 있는지.
+    개별 CP 모드: 21행 격자에서 한 줄을 찾는 대신, 그 CP 하나의 지역별 분포를
+    시/도 지도로 바로 보여준다(_sido_choropleth)."""
     i = T["i"]
     sidos = D["sidos"]
     idx = [D["methods"].index(p) for p in HEATMAP_METRICS[focus]]
@@ -962,8 +1025,10 @@ def _region_methods_all(D, selected, T, include_hg, focus):
     # 드롭다운·지표·엑셀을 오른쪽에 붙여 한 줄로 둔다. 엑셀 버튼을 따로 그리면
     # 줄이 하나 더 생기면서 밑으로 떨어진다(예전 _dl_row가 그랬다).
     head_l, head_m, head_r, head_d = st.columns([0.5, 1.3, 1.1, 0.6])
-    head_l.markdown('<div class="ov-panel-title" style="padding-top:9px;">지역 히트맵</div>',
-                    unsafe_allow_html=True)
+    head_l.markdown(
+        '<div class="ov-panel-title" style="padding-top:9px;">'
+        + ("지역 히트맵" if selected == ALL else "지역 지도") + "</div>",
+        unsafe_allow_html=True)
     with head_m:
         st.selectbox("검증방식", list(HEATMAP_METRICS), key=HM_KEY,
                      format_func=lambda k: HM_LABEL.get(k, k),
@@ -981,43 +1046,81 @@ def _region_methods_all(D, selected, T, include_hg, focus):
             s += sum(cs.nz(row[j]) for j in idx)
         mkt.append(s)
 
-    rows, z = [], []
-    for cp in _ranked_cps(D, i, include_hg, "l"):
-        vals, any_data = [], False
-        for k, sd in enumerate(sidos):
-            row = cs.method_vec(D, cp, i, sd)
-            raw = [row[j] for j in idx]
-            if all(v is None for v in raw):
-                vals.append(None)
-                continue
-            v = sum(cs.nz(x) for x in raw)
-            any_data = True
-            if basis == "건수":
-                vals.append(v)
-            elif basis == "점유율":
-                vals.append((v / mkt[k] * 100) if mkt[k] else None)
-            else:
-                own = cs.listings_at(D, cp, i, sd)
-                vals.append((v / own * 100) if own else None)
-        if any_data and any(cs.nz(v) for v in vals):
-            rows.append(cp)
-            z.append(vals)
+    def raw_count(cp, sd):
+        row = cs.method_vec(D, cp, i, sd)
+        raw = [row[j] for j in idx]
+        return None if all(v is None for v in raw) else sum(cs.nz(x) for x in raw)
 
     # 건수는 정수, 비율은 %. 점유율은 작은 값(0.5% 등)이 많아 두 자리를 남긴다.
     fmt = ({"unit": "", "digits": 0, "suffix": ""} if basis == "건수"
            else {"unit": "%", "digits": 2, "suffix": "%"} if basis == "점유율"
            else {"unit": "%", "digits": 1, "suffix": "%"})
-    hm = pd.DataFrame(z, index=rows, columns=sidos).round(fmt["digits"]).reset_index()
-    hm = hm.rename(columns={"index": "CP"})
-    if fmt["digits"] == 0:
-        hm[sidos] = hm[sidos].astype("Int64")
-    with head_d:      # 위에서 잡아둔 헤더 칸에 나중에 채워 넣는다
-        _dl_button(hm, f"지역히트맵_{focus}_{basis}_{D['months'][i]}",
-                   "cp_hm_dl", "히트맵")
-    hl = None if selected == ALL else (
-        set(cs.PROPTIER_PARTS) if selected == cs.PROPTIER else {selected})
-    st.plotly_chart(_heatmap(rows, sidos, z, highlight=hl, **fmt),
+
+    if selected == ALL:
+        rows, z = [], []
+        for cp in _ranked_cps(D, i, include_hg, "l"):
+            vals, any_data = [], False
+            for k, sd in enumerate(sidos):
+                v = raw_count(cp, sd)
+                if v is None:
+                    vals.append(None)
+                    continue
+                any_data = True
+                if basis == "건수":
+                    vals.append(v)
+                elif basis == "점유율":
+                    vals.append((v / mkt[k] * 100) if mkt[k] else None)
+                else:
+                    own = cs.listings_at(D, cp, i, sd)
+                    vals.append((v / own * 100) if own else None)
+            if any_data and any(cs.nz(v) for v in vals):
+                rows.append(cp)
+                z.append(vals)
+
+        hm = pd.DataFrame(z, index=rows, columns=sidos).round(fmt["digits"]).reset_index()
+        hm = hm.rename(columns={"index": "CP"})
+        if fmt["digits"] == 0:
+            hm[sidos] = hm[sidos].astype("Int64")
+        with head_d:      # 위에서 잡아둔 헤더 칸에 나중에 채워 넣는다
+            _dl_button(hm, f"지역히트맵_{focus}_{basis}_{D['months'][i]}",
+                       "cp_hm_dl", "히트맵")
+        st.plotly_chart(_heatmap(rows, sidos, z, **fmt),
+                        use_container_width=True, config={"displayModeBar": False})
+        return
+
+    # 개별 CP(또는 프롭티어 합산) — 시/도별 값을 하나만 뽑아 지도로 그린다.
+    mine_cps = list(cs.PROPTIER_PARTS) if selected == cs.PROPTIER else [selected]
+    vals = []
+    for k, sd in enumerate(sidos):
+        counts = [raw_count(cp, sd) for cp in mine_cps]
+        if all(c is None for c in counts):
+            vals.append(None)
+            continue
+        v = sum(cs.nz(c) for c in counts)
+        if basis == "건수":
+            vals.append(v)
+        elif basis == "점유율":
+            vals.append((v / mkt[k] * 100) if mkt[k] else None)
+        else:
+            own = sum(cs.nz(cs.listings_at(D, cp, i, sd)) for cp in mine_cps)
+            vals.append((v / own * 100) if own else None)
+
+    if not any(cs.nz(v) for v in vals):
+        st.info(f"{_eun(selected)} {focus} 관련 지역 자료가 없습니다.")
+        return
+
+    lab = _own(selected)
+    df = pd.DataFrame({"시도": sidos,
+                       f"{focus} {basis}": [round(v, fmt["digits"]) if v is not None else None
+                                            for v in vals]})
+    with head_d:
+        _dl_button(df, f"지역지도_{_cp_label(selected)}_{focus}_{basis}_{D['months'][i]}",
+                   "cp_hm_dl", "지역지도")
+    st.plotly_chart(_sido_choropleth(sidos, vals, digits=fmt["digits"], suffix=fmt["suffix"]),
                     use_container_width=True, config={"displayModeBar": False})
+    st.markdown(
+        f'<div class="ov-footnote">색이 진할수록 {lab}의 {focus} {basis}이 높은 시·도다. '
+        '시/군/구 단위 경계 데이터가 없어 시/도 단위로 본다.</div>', unsafe_allow_html=True)
 
 
 
@@ -1082,33 +1185,35 @@ def _section_methods(D, selected, T, include_hg, region=cs.NATION, view="그래�
     # 예전엔 왼쪽에 막대 차트, 오른쪽에 이 표를 나란히 뒀는데, 차트가 보여주는 값이
     # 표의 '구성비' 열과 완전히 같은 숫자였다. 차트를 없애고 그 열 자체를 데이터
     # 막대로 그려서 표 한 칸 안에서 숫자와 비율을 같이 보게 한다.
+    #
+    # 개별 방식 행 + 집주인 방식 소계를 한 목록으로 만들어 구성비 하나로 같이
+    # 정렬한다 — 소계가 어느 개별 방식보다 커도(보통 그렇다) 위로 올라오게.
+    # 소계도 다른 행과 똑같은 모양으로 두고(강조색 없음), 이름으로만 구분한다.
+    rows_data = [dict(name=methods[j], mine=mine_l[j], tot=tot_l[j],
+                      mem=mine_m[j] if nation else None,
+                      mix=(cs.nz(mine_l[j]) / mine_sum * 100) if mine_sum else None,
+                      sh=(cs.nz(mine_l[j]) / tot_l[j] * 100) if tot_l[j] else None)
+                 for j in order]
+    if own:
+        om = sum(cs.nz(mine_l[j]) for j in own)
+        ot = sum(tot_l[j] for j in own)
+        rows_data.append(dict(
+            name="집주인 방식", mine=om, tot=ot, mem=None,
+            mix=(om / mine_sum * 100) if mine_sum else None,
+            sh=(om / ot * 100) if ot else None))
+    rows_data.sort(key=lambda r: -(r["mix"] or 0))
+
     c1, c2 = st.columns([1.4, 1])
     with c1:
         st.markdown('<div class="ov-panel-title" style="font-size:.92rem;">방식별 시장 점유율</div>',
                     unsafe_allow_html=True)
         body = ""
-        for j in order:
-            sh = (cs.nz(mine_l[j]) / tot_l[j] * 100) if tot_l[j] else None
-            mix = (cs.nz(mine_l[j]) / mine_sum * 100) if mine_sum else None
-            body += (f'<tr><td class="region name">{methods[j]}</td>'
-                     f'<td>{_num(mine_l[j])}</td>'
-                     + _databar(_pct(mix, 1), mix, color)
-                     + f'<td class="dim">{_num(tot_l[j])}</td><td>{_pct(sh)}</td>'
-                     + (f'<td class="dim">{_num(mine_m[j])}</td>' if nation else '')
-                     + '</tr>')
-
-        # 집주인 방식 소계 — 3종을 합친 값. 회원수는 한 회원이 여러 방식에 중복
-        # 계상돼 더할 수 없으므로 – 로 둔다(매물수만 합산한다).
-        if own:
-            om = sum(cs.nz(mine_l[j]) for j in own)
-            ot = sum(tot_l[j] for j in own)
-            om_mix = (om / mine_sum * 100) if mine_sum else None
-            body += (f'<tr class="me"><td class="region name">집주인 방식</td>'
-                     f'<td>{_num(om)}</td>'
-                     + _databar(_pct(om_mix, 1), om_mix, INK)
-                     + f'<td class="dim">{_num(ot)}</td>'
-                     f'<td>{_pct((om / ot * 100) if ot else None)}</td>'
-                     + ('<td class="dim">–</td>' if nation else '')
+        for r in rows_data:
+            body += (f'<tr><td class="region name">{r["name"]}</td>'
+                     f'<td>{_num(r["mine"])}</td>'
+                     + _databar(_pct(r["mix"], 1), r["mix"], color)
+                     + f'<td class="dim">{_num(r["tot"])}</td><td>{_pct(r["sh"])}</td>'
+                     + (f'<td class="dim">{_num(r["mem"])}</td>' if nation else '')
                      + '</tr>')
         st.markdown(
             '<div class="ov-table-scroll"><table class="ov-table"><thead><tr>'
