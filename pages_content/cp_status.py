@@ -144,7 +144,6 @@ _EXTRA_CSS = f"""
 .st-key-cp_root .st-key-cp_zone_view,
 .st-key-cp_root .st-key-cp_mix_view,
 .st-key-cp_root .st-key-cp_t2_dl,
-.st-key-cp_root .st-key-cp_t2_zone_dl,
 .st-key-cp_root .st-key-cp_m_dl,
 .st-key-cp_root .st-key-cp_hm_dl {{
     display:flex; justify-content:flex-end; width:100%;
@@ -1393,31 +1392,6 @@ def _attr_frame(cps, mat, tot, axis_names):
     return pd.DataFrame(recs)
 
 
-def _zone_detail(D, selected, T, include_hg, zone, stamp):
-    """권역 버튼을 눌렀을 때 아래에 펼치는 그 권역 안의 시·도 > 시·군·구 표."""
-    lab = _own(selected)
-    mine = (cs.market_cps(D, include_hg) if selected == ALL
-            else list(cs.PROPTIER_PARTS) if selected == cs.PROPTIER else [selected])
-    frame = _region_drill_frame(D, mine, cs.market_cps(D, include_hg), T["i"], lab)
-    frame = frame[frame["권역"] == zone]
-
-    head, dl = st.columns([3, 1])
-    head.markdown('<div class="ov-panel-title" style="font-size:.92rem;">'
-                  f'{lab} · {zone} 지역별 세부</div>', unsafe_allow_html=True)
-    if frame.empty:
-        st.info(f"{_eun(lab)} 이 시점 {zone}에 등록한 매물이 없습니다.")
-        return
-    with dl:
-        _dl_button(frame, f"권역세부_{_cp_label(selected)}_{zone}_{stamp}",
-                   "cp_t2_zone_dl", "권역세부")
-    st.markdown(_region_drill_html(D, frame, lab), unsafe_allow_html=True)
-    st.markdown(
-        f'<div class="ov-footnote">시·도 행을 누르면 시·군·구까지 펼쳐진다. '
-        f'{lab} 내 구성비는 <b>전국</b> 매물 기준이라 이 표의 합'
-        f'({_pct(frame[f"{lab} 내 구성비(%)"].sum(), 1)})이 곧 위 막대의 {zone} 비중이다.'
-        '</div>', unsafe_allow_html=True)
-
-
 def _section_zone_bias(D, selected, T, include_hg):
     """권역별 편중도 — 매물수 기준 지역 편중(수도권/지방), 시·도 > 시·군·구까지 드릴다운.
     검증방식과 무관하게 '어디에 매물이 몰려 있나'만 본다."""
@@ -1441,21 +1415,13 @@ def _section_zone_bias(D, selected, T, include_hg):
 
     if view == "차트 보기":
         # 특정 CP를 고르면 그 막대만 선명하게, 나머지는 흐리게. 'CP사 전체'면 전부 선명하게.
+        # 예전엔 권역을 눌러 시·도 세부를 여기서 또 열었는데, 아래 '지역별 검증 방식'
+        # 표가 지역 선택(수도권/지방 포함)에 매물수까지 이미 보여줘서 그 세부가 통째로
+        # 중복이었다 — 클릭 드릴다운은 없애고 차트만 남긴다.
         st.plotly_chart(
             _stacked100(cps, D["zones"], mat,
                         highlight=None if selected == ALL else me),
             use_container_width=True, config={"displayModeBar": False})
-        z1, z2 = st.columns([1.1, 2.6])
-        with z1:
-            zone = st.segmented_control(
-                "권역 세부", D["zones"], default=None, key="cp_t2_zone",
-                label_visibility="collapsed")
-        z2.markdown('<div class="ov-footnote" style="padding-top:11px;">'
-                    '권역을 누르면 그 안의 시·도 상세가 아래에 열린다. '
-                    '한 번 더 누르면 닫힌다.</div>', unsafe_allow_html=True)
-        if zone:
-            _rule(top=14)
-            _zone_detail(D, selected, T, include_hg, zone, stamp)
         return
 
     # 권역(수도권/지방)만으로는 거칠어서, 시·도 > 시·군·구까지 내려가 본다.
