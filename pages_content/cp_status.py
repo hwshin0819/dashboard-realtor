@@ -46,7 +46,6 @@ COLOR_OTHER = "#e87ba4"   # 위 4개에 없는 '선택한 CP'
 COLOR_HG = "#9AA4A0"      # 한공협(협회라 성격이 달라 회색 고정)
 COLOR_ETC = "#C4CAC6"     # 상위권 밖을 묶은 '기타'
 PILL_GREEN = "#027A48"    # 세그먼트 버튼 선택 상태 (실거래량 동향과 같은 배색 지침)
-FIXED_SERIES = ["이실장", "매경", "써브", "뱅크"]
 
 # 검증방식처럼 여러 계열을 한 그림에 쌓을 때 쓰는 순서 고정 팔레트.
 # (dataviz 기준 팔레트 슬롯 1~8 — 인접쌍 CVD ΔE 9.1 / 일반시야 19.6으로 검증 통과.
@@ -90,7 +89,7 @@ MAX_SERIES = 7
 
 # 지역(어디) 축과 구성(무엇) 축을 탭으로 분리한다 — 기타는 전체 CP 이슈 목록이라
 # 개별 CP를 볼 땐 의미가 없어 그 경우만 목록에서 뺀다(render()에서 동적으로 구성).
-SECTIONS = ["시장 점유율", "지역 현황", "구성 비교"]
+SECTIONS = ["시장 점유율", "검증 방식", "구성 비교"]
 SECTION_ETC = "특이사항"
 
 # 검증방식 묶음 보기 — 범례 오른쪽 끝의 버튼. '집주인 방식'을 누르면 아래 3종만
@@ -166,13 +165,6 @@ _EXTRA_CSS = f"""
 .st-key-cp_root #rgdrill tr.kid td.region {{ padding-left:22px; font-weight:400; }}
 .st-key-cp_root #cpdrill tr.sido td,
 .st-key-cp_root #rgdrill tr.sido td {{ font-weight:600; }}
-
-/* 라벨이 보이는 세그먼트를 오른쪽 끝으로. 묶음 자체를 내용 너비로 줄여 margin-left:auto로
-   밀면, 라벨은 왼쪽 '기준'과 마찬가지로 첫 버튼 위에 남는다(라벨만 따로 우측 정렬하면
-   버튼 묶음과 떨어져 보인다). */
-.st-key-cp_root .st-key-cp_t1_scale [data-testid="stButtonGroup"] {{
-    width:fit-content; margin-left:auto;
-}}
 
 /* 세그먼트 버튼 — 다른 메뉴(실거래량 동향 '빠른 선택')와 같은 모양으로 통일한다.
    선택된 것만 초록 배경+흰 글자, 나머지는 회색 테두리.
@@ -722,75 +714,6 @@ def _base_layout(fig, height=380, ylab=None):
     return fig
 
 
-# ── 추이 차트 (섹션 2·3 공용) ────────────────────────────────────────────────
-def _trend_fig(D, names, values, T, selected, *, mode, as_bar, unit, height=400, colors=None):
-    """names 순서대로 그린다. values는 {이름: [월별 값]}.
-    mode: 'share'(%, 0기준) / 'abs'(실수, 0기준) / 'index'(구간 시작=100).
-    기준 시점은 점선 + 굵은 축 라벨, 기간 모드면 구간 전체를 음영으로 표시한다.
-    구간을 잘라내지 않고 8개 시점을 다 그리는 이유는, 시점이 8개뿐이라 앞뒤 맥락이 있어야
-    구간 안의 움직임이 추세인지 튄 것인지 판단할 수 있기 때문이다. 이중 축은 쓰지 않는다."""
-    labels = D["labels"]
-    sel_i, lo, hi = T["i"], T["lo"], T["hi"]
-    ticktext = [f"<b>{t}</b>" if lo <= i <= hi else f'<span style="opacity:.55">{t}</span>'
-                for i, t in enumerate(labels)] if T["range"] else \
-        [f"<b>{t}</b>" if i == sel_i else t for i, t in enumerate(labels)]
-
-    fig = go.Figure()
-    allv = []
-    for nm in names:
-        vals = values[nm]
-        allv += [v for v in vals if v is not None]
-        color = (colors or {}).get(nm) or series_color(nm, selected)
-        wide = nm == selected or (selected == cs.PROPTIER and nm in cs.PROPTIER_PARTS)
-        if as_bar:
-            fig.add_trace(go.Bar(
-                x=labels, y=vals, name=nm, marker_color=color,
-                hovertemplate="%{y:,." + ("2f" if mode != "abs" else "0f") + "}" + unit + "<extra>" + nm + "</extra>",
-            ))
-        else:
-            fig.add_trace(go.Scatter(
-                x=labels, y=vals, name=nm, mode="lines+markers", connectgaps=False,
-                line=dict(color=color, width=3 if wide else 1.9),
-                marker=dict(size=7 if wide else 5),
-                hovertemplate="%{y:,." + ("2f" if mode != "abs" else "0f") + "}" + unit + "<extra>" + nm + "</extra>",
-            ))
-
-    ymax = max(allv) if allv else 1
-    if mode == "index":
-        ymin = min(allv) if allv else 0
-        pad = (ymax - ymin) * 0.12 or 5
-        yaxis = dict(range=[ymin - pad, ymax + pad], gridcolor=LINE, zerolinecolor=LINE,
-                     title=f"지수 ({labels[lo]}=100)")
-        fig.add_hline(y=100, line=dict(color=MUTED, width=1, dash="dot"))
-    else:
-        step, top = _axis(ymax)
-        yaxis = dict(range=[0, top], dtick=step, gridcolor=LINE, zerolinecolor=LINE,
-                     title="점유율" if mode == "share" else "실수",
-                     ticksuffix="%" if mode == "share" else "")
-    fig.update_layout(
-        barmode="group",
-        xaxis=dict(gridcolor=LINE, tickmode="array", tickvals=labels, ticktext=ticktext),
-        yaxis=yaxis,
-    )
-    # 선택한 시점/구간 표시 (x가 카테고리라 인덱스로 건다)
-    if T["range"] and lo != hi:
-        fig.add_vrect(x0=lo - 0.35, x1=hi + 0.35, fillcolor=GREEN, opacity=0.06,
-                      line_width=0, layer="below")
-        fig.add_vline(x=lo, line=dict(color=INK, width=1.2, dash="dot"), opacity=0.4)
-    fig.add_vline(x=sel_i, line=dict(color=INK, width=1.2, dash="dot"), opacity=0.55)
-    return _base_layout(fig, height=height)
-
-
-def _trend_series_names(D, selected, include_hg):
-    """색이 고정된 4개 + 선택한 CP + (포함 시) 한공협. 순위와 무관하게 늘 같은 구성."""
-    names = list(FIXED_SERIES)
-    if selected not in names:
-        names.append(selected)
-    if include_hg and cs.HANGONG not in names:
-        names.append(cs.HANGONG)
-    return [n for n in names if n in D["d"]]
-
-
 # ── 섹션 2·3 ─────────────────────────────────────────────────────────────────
 
 
@@ -813,31 +736,6 @@ def _per_member_rank(D, selected, T, include_hg):
                for c, _ in per],
               [f"{v:,.1f}건" for _, v in per], xtitle="회원 1계약당 매물수"),
         use_container_width=True, config={"displayModeBar": False})
-
-
-def _all_trend_values(D, T, include_hg, key, scale):
-    """전체 모드 추이: 상위 MAX_SERIES개 + 나머지를 묶은 '기타'.
-    색을 21개 만들면 서로 구분이 안 되므로 상위만 색을 주고 나머지는 합쳐서 보여준다."""
-    colors, top, rest = _all_colors(D, T["i"], include_hg)
-    names = list(top) + ([cs.HANGONG] if include_hg else [])
-    raw = {n: list(D["d"][n][key]) for n in names}
-    if rest:
-        names.append("기타")
-        colors["기타"] = COLOR_ETC
-        raw["기타"] = [sum(cs.nz(D["d"][c][key][i]) for c in rest) for i in range(D["nm"])]
-
-    if scale == "점유율":
-        tot = [cs.market(D, key, i, include_hg) for i in range(D["nm"])]
-        vals = {n: [None if not tot[i] else raw[n][i] / tot[i] * 100 for i in range(D["nm"])]
-                for n in names}
-        return names, vals, colors, "share", "%", 2
-    if scale == "실수":
-        return names, raw, colors, "abs", ("건" if key == "l" else "명"), 0
-    vals = {}
-    for n in names:
-        base = next((raw[n][k] for k in range(T["lo"], D["nm"]) if raw[n][k]), None)
-        vals[n] = [None if (v is None or not base) else v / base * 100 for v in raw[n]]
-    return names, vals, colors, "index", "", 1
 
 
 # ── 섹션 4·5 ─────────────────────────────────────────────────────────────────
@@ -1029,7 +927,7 @@ def _region_methods_all(D, selected, T, include_hg, focus):
     head_l, head_m, head_r, head_d = st.columns([0.5, 1.3, 1.1, 0.6])
     head_l.markdown(
         '<div class="ov-panel-title" style="padding-top:9px;">'
-        + ("지역 히트맵" if selected == ALL else "지역 지도") + "</div>",
+        + ("검증방식별 지역 히트맵" if selected == ALL else "검증방식별 지역 지도") + "</div>",
         unsafe_allow_html=True)
     with head_m:
         st.selectbox("검증방식", list(HEATMAP_METRICS), key=HM_KEY,
@@ -1128,8 +1026,8 @@ def _region_methods_all(D, selected, T, include_hg, focus):
 
 def _share_table(D, selected, T, include_hg, methods, live0, tot_l0):
     """CP 하나의 방식별 점유율 표(전국 고정) — 개별 방식 + '집주인 방식' 소계를
-    구성비 내림차순으로. 지역을 바꿔가며 보는 건 지역 현황 탭의 드릴다운 몫이라
-    여기는 항상 전국 값만 다룬다."""
+    구성비 내림차순으로. 지역을 바꿔가며 보는 건 같은 탭 아래쪽 드릴다운 표
+    (_section_methods)의 몫이라, 여기는 항상 전국 값만 다룬다."""
     sel_i = T["i"]
     mine_l = cs.method_vec(D, selected, sel_i, cs.NATION)
     mine_m = D["d"][selected]["vm"][sel_i] or [None] * len(methods)
@@ -1196,9 +1094,9 @@ def _share_table(D, selected, T, include_hg, methods, live0, tot_l0):
 
 def _section_methods(D, selected, T, include_hg, region=cs.NATION, dl_slot=None):
     """시도 > 시군구 계층 표 — 지역을 바꿔가며 검증방식별 매물수/구성비/점유율을 본다.
-    구성 요약(방식별 시장 점유율)은 구성 비교 탭에 전국 고정으로 따로 있어(_share_table),
-    여기서는 '지역'이 주어인 드릴다운만 맡는다 — 같은 표를 두 탭에서 반복하지 않기 위해서다.
-    제목과 지역 선택 컨트롤은 호출하는 쪽(_tab_region)이 그린다."""
+    같은 탭 위쪽의 'CP별 매물 검증방식 구성'(_share_table)은 전국 고정 요약이고,
+    여기는 '지역'이 주어인 드릴다운만 맡는다 — 요약과 드릴다운이 같은 숫자를 반복하지 않도록.
+    제목과 지역 선택 컨트롤은 호출하는 쪽(_tab_method)이 그린다."""
     sel_i = T["i"]
     methods = D["methods"]
     tot_l0 = cs.method_market(D, sel_i, include_hg, region)
@@ -1248,7 +1146,7 @@ def _region_all(D, selected, T, include_hg):
         rows.append(c)
         z.append(vals)
 
-    st.markdown('<div class="ov-panel-title">전국 지역별 CP 점유율 현황</div>',
+    st.markdown('<div class="ov-panel-title">CP별 시·도 지역 점유율 현황</div>',
                 unsafe_allow_html=True)
     hl = None if selected == ALL else (
         set(cs.PROPTIER_PARTS) if selected == cs.PROPTIER else {selected})
@@ -1301,54 +1199,9 @@ def _section_notes(D):
 
 # ── KPI ──────────────────────────────────────────────────────────────────────
 # ── 탭 본문 ──────────────────────────────────────────────────────────────────
-def _section_trend(D, selected, T, include_hg):
-    """주요 CP 점유율 추이 — 기준/눈금 토글을 가진 통합 추이 차트."""
-    st.markdown('<div class="ov-panel-title">주요 CP 점유율 추이</div>',
-                unsafe_allow_html=True)
-    c1, c2 = st.columns([1, 1.5])
-    metric = c1.segmented_control("기준", ["회원수", "매물수"], default="회원수",
-                                  key="cp_t1_metric") or "회원수"
-    scale = c2.segmented_control("눈금", ["점유율(%)", "실수(건)", "지수"],
-                                 default="점유율(%)", key="cp_t1_scale") or "점유율(%)"
-    key = "m" if metric == "회원수" else "l"
-    plain = {"점유율(%)": "점유율", "실수(건)": "실수", "지수": "지수"}[scale]
-
-    if selected == ALL:
-        names, values, colors, mode, unit, _ = _all_trend_values(
-            D, T, include_hg, key, plain)
-    else:
-        colors = None
-        names = _trend_series_names(D, selected, include_hg)
-        if plain == "점유율":
-            values = {n: cs.share_series(D, n, key, include_hg) for n in names}
-            mode, unit = "share", "%"
-        elif plain == "실수":
-            values = {n: list(D["d"][n][key]) for n in names}
-            mode, unit = "abs", ("명" if key == "m" else "건")
-        else:
-            values = {}
-            for n in names:
-                raw = D["d"][n][key]
-                base = next((raw[k] for k in range(T["lo"], D["nm"]) if raw[k]), None)
-                values[n] = [None if (v is None or not base) else v / base * 100
-                             for v in raw]
-            mode, unit = "index", ""
-
-    st.plotly_chart(
-        _trend_fig(D, names, values, T, selected, mode=mode, as_bar=False,
-                   unit=unit, colors=colors, height=420),
-        use_container_width=True, config={"displayModeBar": False})
-    if key == "m" and mode == "share":
-        st.markdown(
-            '<div class="ov-footnote">회원 점유율은 총계 행에서만 계산한다. 상세(지역·유형) '
-            '회원수는 한 회원이 여러 칸에 중복 계상돼 합산하면 실제의 몇 배가 된다.</div>',
-            unsafe_allow_html=True)
-
-
-
 def _tab_share(D, selected, T, include_hg):
-    """탭1 시장 점유율 — 전체 모드는 비교 관점(히트맵·집계표·추이) 그대로.
-    개별 모드는 히트맵(지역현황 탭 지도와 중복)·추이(비교 차트)를 빼고,
+    """탭1 시장 점유율 — 전체 모드는 비교 관점(히트맵·집계표) 그대로.
+    개별 모드는 히트맵(검증 방식 탭 지도와 중복)을 빼고,
     집계표만 접어서(기본 닫힘) 필요할 때만 다른 CP와 비교해보게 한다."""
     if selected != ALL:
         with st.expander("다른 CP와 비교해서 보기"):
@@ -1357,8 +1210,6 @@ def _tab_share(D, selected, T, include_hg):
     _region_all(D, selected, T, include_hg)
     _rule()
     _section_rank(D, selected, T, include_hg)
-    _rule()
-    _section_trend(D, selected, T, include_hg)
 
 
 def _attr_matrix(D, T, include_hg, axis_key, axis_names):
@@ -1393,13 +1244,14 @@ def _attr_frame(cps, mat, tot, axis_names):
 
 
 def _section_zone_bias(D, selected, T, include_hg):
-    """권역별 편중도 — 매물수 기준 지역 편중(수도권/지방), 시·도 > 시·군·구까지 드릴다운.
+    """CP별 권역별(수도권/지방) 구성비 — 매물수 기준 지역 편중, 시·도 > 시·군·구까지 드릴다운.
     검증방식과 무관하게 '어디에 매물이 몰려 있나'만 본다."""
     i = T["i"]
     stamp = D["months"][i]
     c1, c2, c3 = st.columns([1.72, 1.0, 0.48])
     with c1:
-        st.markdown('<div class="ov-panel-title" style="padding-top:9px;">권역별 편중도</div>',
+        st.markdown('<div class="ov-panel-title" style="padding-top:9px;">'
+                    'CP별 권역별(수도권/지방) 구성비</div>',
                     unsafe_allow_html=True)
     with c2:
         view = st.segmented_control(
@@ -1504,19 +1356,28 @@ def _section_listing_mix(D, selected, T, include_hg):
         '총계와 정확히 맞는다.</div>', unsafe_allow_html=True)
 
 
-def _tab_region(D, selected, T, include_hg):
-    """탭2 지역 현황 — '어디' 축의 화면만 모은다: 지도/히트맵, 권역별 편중도(매물수),
-    지역별 검증방식 표. 검증방식·매물유형을 막론하고 지역이 주어인 질문은 전부 여기로."""
+def _tab_method(D, selected, T, include_hg):
+    """탭2 검증 방식 — 검증방식과 관련된 화면만 모은다: 지역 히트맵/지도, CP별 검증방식
+    구성, 지역별 검증방식 표. 매물유형·권역(수도권/지방) 구성비는 구성 비교 탭으로 옮겼다."""
     focus = _hm_metric()
     _region_methods_all(D, selected, T, include_hg, focus)
     _rule()
 
-    _section_zone_bias(D, selected, T, include_hg)
+    sel_i = T["i"]
+    methods = D["methods"]
+    tot_l0 = cs.method_market(D, sel_i, include_hg, cs.NATION)
+    live0 = [j for j in range(len(methods)) if tot_l0[j] > 0]
+    st.markdown('<div class="ov-panel-title" style="padding-top:9px;">CP별 매물 검증방식 구성</div>',
+                unsafe_allow_html=True)
+    if not live0:
+        st.info("이 시점에 검증방식 데이터가 없습니다.")
+    elif selected == ALL:
+        _methods_all_chart(D, T, include_hg, cs.NATION, methods, live0)
+    else:
+        _share_table(D, selected, T, include_hg, methods, live0, tot_l0)
     _rule()
 
-    # 지역 필터 — 고르면 표가 전부 그 지역 기준으로 다시 계산된다. 구성 요약(방식별
-    # 시장 점유율)은 구성 비교 탭에 전국 고정으로 따로 있어, 여기는 드릴다운 표 하나만 둔다
-    # — 예전엔 '그래프' 토글이 그 요약표를 다시 보여줘서 두 탭 숫자가 겹쳤다.
+    # 지역 필터 — 고르면 표가 전부 그 지역 기준으로 다시 계산된다.
     # 제목이 선택한 지역을 달고 있어야 해서, 위젯을 만들기 전에 값을 먼저 읽는다.
     opts = cs.region_options(D)
     region = st.session_state.get("cp_region")
@@ -1532,24 +1393,10 @@ def _tab_region(D, selected, T, include_hg):
 
 
 def _tab_compose(D, selected, T, include_hg):
-    """탭3 구성 비교 — 지역 축 없이 CP의 '무엇'(매물 유형 · 검증 방식) 구성만 비교한다.
-    전국 고정 값이라, 지역 탭에서 지역을 바꿔가며 보는 것과 역할이 겹치지 않는다."""
+    """탭3 구성 비교 — 검증방식과 무관한 속성 구성비만 모은다: 매물 유형, 권역(수도권/지방)."""
     _section_listing_mix(D, selected, T, include_hg)
     _rule()
-
-    sel_i = T["i"]
-    methods = D["methods"]
-    tot_l0 = cs.method_market(D, sel_i, include_hg, cs.NATION)
-    live0 = [j for j in range(len(methods)) if tot_l0[j] > 0]
-    st.markdown('<div class="ov-panel-title" style="padding-top:9px;">CP별 매물 검증방식 구성</div>',
-                unsafe_allow_html=True)
-    if not live0:
-        st.info("이 시점에 검증방식 데이터가 없습니다.")
-        return
-    if selected == ALL:
-        _methods_all_chart(D, T, include_hg, cs.NATION, methods, live0)
-    else:
-        _share_table(D, selected, T, include_hg, methods, live0, tot_l0)
+    _section_zone_bias(D, selected, T, include_hg)
 
 
 def _tab_etc(D, selected, T, include_hg):
@@ -1729,7 +1576,7 @@ def render():
 
         # 다른 메뉴(중개업 시장 동향·공인중개사 현황)와 같은 탭 UI.
         # st.tabs는 숨은 탭 내용까지 전부 렌더하지만 서버측 40ms 수준이라 체감 차이가 없다.
-        # 기타는 전 CP 이슈 목록이라 개별 CP를 볼 땐 탭 자체를 빼서 헷갈리지 않게 한다.
+        # 특이사항은 전 CP 이슈 목록이라 개별 CP를 볼 땐 탭 자체를 빼서 헷갈리지 않게 한다.
         names = SECTIONS + ([SECTION_ETC] if selected == ALL else [])
         tabs = st.tabs(names)
 
@@ -1737,7 +1584,7 @@ def render():
             _tab_share(D, selected, T, include_hg)
 
         with tabs[1]:
-            _tab_region(D, selected, T, include_hg)
+            _tab_method(D, selected, T, include_hg)
 
         with tabs[2]:
             _tab_compose(D, selected, T, include_hg)
