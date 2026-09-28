@@ -1415,8 +1415,8 @@ def _tab_method(D, selected, T, include_hg):
     region = st.session_state.get("cp_region")
     region = region if region in opts else cs.NATION
     # 지역 선택 드롭다운은 옵션이 짧은 이름(전국/수도권/서울 등)뿐이라 넓을 필요가 없다 —
-    # 좁혀서 오른쪽 엑셀 버튼 쪽으로 붙인다.
-    c1, c2, c3 = st.columns([2.24, 0.48, 0.48])
+    # 제목 칸을 필요한 만큼만 남기고 좁혀서, 드롭다운이 엑셀 버튼 바로 옆으로 붙게 한다.
+    c1, c2, c3 = st.columns([1.4, 0.6, 0.6])
     with c1:
         st.markdown(f'<div class="ov-panel-title" style="padding-top:9px;">'
                     f'지역별 검증 방식 · {region}</div>', unsafe_allow_html=True)
