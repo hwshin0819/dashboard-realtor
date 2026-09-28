@@ -432,11 +432,24 @@ def _stacked100(rows, cats, matrix, colors=None, *, height=None, highlight=None,
 
 
 def _heatmap(rows, cols, z, *, unit="%", digits=2, suffix="", height=None,
-             title=None):
+             title=None, highlight=None):
     """단일 색상 순차 램프 히트맵(무지개 금지). 값이 클수록 진하다.
 
     digits/suffix는 칸 안 숫자 서식. 건수를 소수점까지 찍으면 '32,044.00'처럼
-    읽기만 나빠지고, 비율은 %가 붙어야 무슨 값인지 바로 안다."""
+    읽기만 나빠지고, 비율은 %가 붙어야 무슨 값인지 바로 안다.
+
+    highlight에 CP 이름 집합을 주면 그 행들을 맨 위로 올리고 굵게 표시한다 — CP를
+    골라도 21행 중 어디가 자기 것인지 안 보이던 문제를 고친다(탭1·탭2 히트맵
+    공용, 다른 다중 CP 시각화는 이미 강조가 있는데 여기 둘만 빠져 있었다).
+    프롭티어(전체)를 고르면 이실장·매경 두 행이 같이 뜨므로 집합으로 받는다."""
+    hset = set(highlight or ())
+    if hset & set(rows):
+        hit = [r for r in rows if r in hset]
+        rest = [r for r in rows if r not in hset]
+        idx = {r: k for k, r in enumerate(rows)}
+        rows2 = hit + rest
+        z = [z[idx[r]] for r in rows2]
+        rows = rows2
     text = [[("–" if v is None else f"{v:,.{digits}f}{suffix}") for v in r]
             for r in z]
     fig = go.Figure(go.Heatmap(
@@ -452,6 +465,16 @@ def _heatmap(rows, cols, z, *, unit="%", digits=2, suffix="", height=None,
     )
     _base_layout(fig, height=height or (24 * len(rows) + 90))
     fig.update_layout(hovermode="closest", showlegend=False)
+    if hset & set(rows):
+        # Plotly의 축 tickfont는 행마다 다른 색을 못 준다(실측: color에 배열을 넣으면
+        # ValueError) — 그래서 라벨을 굵게 하는 대신, 해당 행 전체를 테두리로 감싼다.
+        # 맨 위로 이미 옮겨놨으니 index 0이 곧 그 행이다.
+        fig.update_layout(shapes=[
+            dict(type="rect", xref="paper", yref="y", x0=0, x1=1,
+                 y0=k - 0.5, y1=k + 0.5,
+                 line=dict(color=GREEN_DEEP, width=2), fillcolor="rgba(0,0,0,0)")
+            for k, r in enumerate(rows) if r in hset
+        ])
     return fig
 
 
@@ -925,7 +948,7 @@ def _methods_all_chart(D, T, include_hg, region, methods, live):
 
 
 
-def _region_methods_all(D, T, include_hg, focus):
+def _region_methods_all(D, selected, T, include_hg, focus):
     """CP x 시도 히트맵 — 어느 CP가 어느 지역에 그 방식을 밀고 있는지."""
     i = T["i"]
     sidos = D["sidos"]
@@ -986,7 +1009,9 @@ def _region_methods_all(D, T, include_hg, focus):
     with head_d:      # 위에서 잡아둔 헤더 칸에 나중에 채워 넣는다
         _dl_button(hm, f"지역히트맵_{focus}_{basis}_{D['months'][i]}",
                    "cp_hm_dl", "히트맵")
-    st.plotly_chart(_heatmap(rows, sidos, z, **fmt),
+    hl = None if selected == ALL else (
+        set(cs.PROPTIER_PARTS) if selected == cs.PROPTIER else {selected})
+    st.plotly_chart(_heatmap(rows, sidos, z, highlight=hl, **fmt),
                     use_container_width=True, config={"displayModeBar": False})
 
 
@@ -1148,8 +1173,9 @@ def _section_methods(D, selected, T, include_hg, region=cs.NATION, view="그래�
 # ── 섹션 8 ───────────────────────────────────────────────────────────────────
 
 
-def _region_all(D, T, include_hg):
-    """전체 모드 '지역' — CP x 시도 점유율 히트맵. 어느 CP가 어디에 강한지 색으로 찾는다."""
+def _region_all(D, selected, T, include_hg):
+    """CP x 시도 점유율 히트맵. 어느 CP가 어디에 강한지 색으로 찾는다.
+    개별 CP를 보고 있으면 그 행을 맨 위로 올리고 굵게 강조한다."""
     i = T["i"]
     sidos = D["sidos"]
     tot = cs.market_vec(D, "sl", i, include_hg, len(sidos))
@@ -1166,7 +1192,9 @@ def _region_all(D, T, include_hg):
 
     st.markdown('<div class="ov-panel-title">전국 지역별 CP 점유율 현황</div>',
                 unsafe_allow_html=True)
-    st.plotly_chart(_heatmap(rows, sidos, z), use_container_width=True,
+    hl = None if selected == ALL else (
+        set(cs.PROPTIER_PARTS) if selected == cs.PROPTIER else {selected})
+    st.plotly_chart(_heatmap(rows, sidos, z, highlight=hl), use_container_width=True,
                     config={"displayModeBar": False})
 
 
@@ -1262,7 +1290,7 @@ def _section_trend(D, selected, T, include_hg):
 
 def _tab_share(D, selected, T, include_hg):
     """탭1 시장 점유율 — 지역 히트맵 → 집계표 → 추이 차트."""
-    _region_all(D, T, include_hg)
+    _region_all(D, selected, T, include_hg)
     _rule()
     _section_rank(D, selected, T, include_hg)
     _rule()
@@ -1619,7 +1647,7 @@ def render():
             # 지역 히트맵이 먼저. 기준 지표 위젯이 히트맵 헤더 안에 있어서,
             # 뒤따르는 시도별 표가 같은 값을 쓰도록 session_state에서 미리 읽는다.
             focus = _hm_metric()
-            _region_methods_all(D, T, include_hg, focus)
+            _region_methods_all(D, selected, T, include_hg, focus)
             _rule()
 
             # 지역 필터 — 고르면 구성비·점유율이 전부 그 지역 기준으로 다시 계산된다.
