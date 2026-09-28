@@ -152,7 +152,8 @@ _EXTRA_CSS = f"""
 .st-key-cp_root .st-key-cp_mix_view,
 .st-key-cp_root .st-key-cp_t2_dl,
 .st-key-cp_root .st-key-cp_m_dl,
-.st-key-cp_root .st-key-cp_hm_dl {{
+.st-key-cp_root .st-key-cp_hm_dl,
+.st-key-cp_root .st-key-cp_methods_scope {{
     display:flex; justify-content:flex-end; width:100%;
 }}
 
@@ -197,17 +198,20 @@ _EXTRA_CSS = f"""
 .st-key-cp_root button[data-variant="segmented_control"][data-selected="true"] p {{
     color:#fff !important; font-weight:700 !important;
 }}
-/* 검증방식별 지역 히트맵/지도 위 버튼(점유율·건수·CP 내 비중, 엑셀 다운로드) — 지도가
-   옆 칸(CP별 매물 검증방식 구성)과 좌우로 나뉘며 좁아지자 버튼이 상대적으로 커
-   보였다. 이 줄만 살짝 줄인다(다른 곳의 38px 버튼과는 무관하게 여기만 적용). */
-.st-key-cp_root .st-key-cp_rm_basis button[data-variant="segmented_control"] {{
+/* 검증방식별 지역 히트맵/지도 위 버튼(점유율·건수·CP 내 비중, 엑셀 다운로드)과
+   CP별 매물 검증방식 구성 위 버튼(전체 방식·집주인 방식) — 지도가 옆 칸과 좌우로
+   나뉘며 좁아지자 버튼이 상대적으로 커 보였다. 넷 다 점유율 버튼 크기로 맞춘다
+   (다른 곳의 38px 버튼과는 무관하게 이 네 위젯에만 적용). */
+.st-key-cp_root .st-key-cp_rm_basis button[data-variant="segmented_control"],
+.st-key-cp_root .st-key-cp_methods_scope button[data-variant="segmented_control"] {{
     height:30px !important;
 }}
-.st-key-cp_root .st-key-cp_rm_basis button[data-variant="segmented_control"] p {{
+.st-key-cp_root .st-key-cp_rm_basis button[data-variant="segmented_control"] p,
+.st-key-cp_root .st-key-cp_methods_scope button[data-variant="segmented_control"] p {{
     font-size:.76rem !important;
 }}
 .st-key-cp_root .st-key-cp_hm_dl button {{
-    height:30px !important; padding:0 12px !important; font-size:.8rem !important;
+    height:30px !important; padding:0 12px !important; font-size:.76rem !important;
 }}
 /* 토글은 위에 라벨 줄이 없어 혼자 27px 위로 떠 있었다. 옆 컨트롤과 중심을 맞춘다. */
 .st-key-cp_root .st-key-cp_hg_user,
@@ -1270,7 +1274,12 @@ def _section_zone_bias(D, selected, T, include_hg):
     검증방식과 무관하게 '어디에 매물이 몰려 있나'만 본다."""
     i = T["i"]
     stamp = D["months"][i]
-    c1, c2, c3 = st.columns([1.72, 1.0, 0.48])
+    # 차트 보기엔 엑셀 버튼이 없어 그 칸(c3)만큼 오른쪽이 비어 보였다 — 표로 보기일 때만
+    # 칸을 셋으로 나누고, 차트 보기는 둘로 합쳐 토글이 진짜 오른쪽 끝까지 붙게 한다.
+    wide = (st.session_state.get("cp_zone_view") or "차트 보기") != "표로 보기"
+    cols = st.columns([1.72, 1.48] if wide else [1.72, 1.0, 0.48])
+    c1, c2 = cols[0], cols[1]
+    c3 = cols[2] if len(cols) > 2 else None
     with c1:
         st.markdown('<div class="ov-panel-title" style="padding-top:9px;">'
                     'CP별 권역별(수도권/지방) 구성비</div>',
@@ -1318,7 +1327,12 @@ def _section_listing_mix(D, selected, T, include_hg):
     """매물 유형 구성 — 매물 종류(아파트·오피스텔 등) 구성비. 지역 축과 무관한 '무엇' 질문."""
     i = T["i"]
     stamp = D["months"][i]
-    c1, c2, c3 = st.columns([1.72, 1.0, 0.48])
+    # 차트 보기엔 엑셀 버튼이 없어 그 칸(c3)만큼 오른쪽이 비어 보였다 — 표로 보기일 때만
+    # 칸을 셋으로 나누고, 차트 보기는 둘로 합쳐 토글이 진짜 오른쪽 끝까지 붙게 한다.
+    wide = (st.session_state.get("cp_mix_view") or "차트 보기") != "표로 보기"
+    cols = st.columns([1.72, 1.48] if wide else [1.72, 1.0, 0.48])
+    c1, c2 = cols[0], cols[1]
+    c3 = cols[2] if len(cols) > 2 else None
     with c1:
         st.markdown('<div class="ov-panel-title" style="padding-top:9px;">'
                     'CP별 매물 유형 구성 (공동/비공동/비공동비주택)</div>',
