@@ -1573,10 +1573,16 @@ def render():
         # ---- 전역 컨트롤 ----
         options = _cp_options(D)
         default_i = options.index(ALL) if ALL in options else 0
-        # 기간 슬라이더는 넓어야 하고 시점 드롭다운은 그럴 필요가 없다. 어느 쪽인지는
-        # 위젯을 만들기 전에 session_state에서 읽어 칸 너비를 정한다.
+        # 기간 슬라이더는 넓어야 하고 시점 드롭다운은 그럴 필요가 없다(연월 하나뿐이라
+        # 짧다). 어느 쪽인지는 위젯을 만들기 전에 session_state에서 읽어 칸 너비를 정한다.
+        # 시점 모드는 남는 폭을 빈 칸(스페이서)으로 돌려, CP·보기·한공협 칸의 비율이
+        # 기간 모드와 똑같이 유지되게 한다 — 안 그러면 모드를 바꿀 때마다 CP 드롭다운
+        # 폭이 따라 늘었다 줄었다 했다.
         wide = (st.session_state.get("cp_tmode") or "시점") == "기간"
-        c1, c0, c2, c3 = st.columns([1.05, 0.8, 2.5 if wide else 1.2, 1.05])
+        cols = (st.columns([1.05, 0.8, 2.5, 1.05]) if wide
+                else st.columns([1.05, 0.8, 0.65, 1.85, 1.05]))
+        c1, c0, c2 = cols[0], cols[1], cols[2]
+        c3 = cols[3] if wide else cols[4]
         selected = c1.selectbox("CP", options, index=default_i, key="cp_sel",
                                 format_func=_cp_label)
         mode = c0.segmented_control("보기", ["시점", "기간"], default="시점",
