@@ -141,7 +141,6 @@ _EXTRA_CSS = f"""
 /* 제목 오른쪽에 붙는 보기 전환 토글은 오른쪽 끝으로.
    부모가 flex라서 width:100%를 같이 주지 않으면 내용 크기로 줄어들어 우측 정렬이 어긋난다. */
 .st-key-cp_root .st-key-cp_rm_basis,
-.st-key-cp_root .st-key-cp_mall_view,
 .st-key-cp_root .st-key-cp_zone_view,
 .st-key-cp_root .st-key-cp_mix_view,
 .st-key-cp_root .st-key-cp_t2_dl,
@@ -995,10 +994,8 @@ def _section_issues(D, selected, T, include_hg):
 
 
 # ── 섹션 7 ───────────────────────────────────────────────────────────────────
-def _methods_all_chart(D, T, include_hg, region, methods, live, key=None):
-    """전체 모드 그래프 — 어느 CP가 어떤 검증방식에 기대고 있는지 100% 누적 막대로.
-    지역 탭(region 가변)과 구성 비교 탭(region=전국 고정)이 같은 인자로 부를 수 있어
-    (둘 다 기본 region이 전국이면 동일 호출이 된다), 위젯 ID 충돌을 막으려면 key가 필요하다."""
+def _methods_all_chart(D, T, include_hg, region, methods, live):
+    """전체 모드 그래프 — 어느 CP가 어떤 검증방식에 기대고 있는지 100% 누적 막대로."""
     i = T["i"]
     names = [methods[j] for j in live]
     # 검증방식 자료가 아예 없는 CP(한공협)와 그 시점에 0건인 CP는 행에서 빠진다.
@@ -1016,7 +1013,7 @@ def _methods_all_chart(D, T, include_hg, region, methods, live, key=None):
         st.info("이 지역에 검증방식 데이터가 없습니다.")
         return
     st.plotly_chart(_stacked100(cps, names, mat, sets=METHOD_SETS),
-                    use_container_width=True, config={"displayModeBar": False}, key=key)
+                    use_container_width=True, config={"displayModeBar": False})
 
 
 
@@ -1130,14 +1127,13 @@ def _region_methods_all(D, selected, T, include_hg, focus):
 
 
 
-def _share_table(D, selected, T, include_hg, methods, live0, tot_l0, region=cs.NATION):
-    """CP 하나의 방식별 점유율 표 — 개별 방식 + '집주인 방식' 소계를 구성비 내림차순으로.
-    지역 탭(region 가변)과 구성 비교 탭(region=전국 고정) 양쪽에서 같이 쓴다."""
+def _share_table(D, selected, T, include_hg, methods, live0, tot_l0):
+    """CP 하나의 방식별 점유율 표(전국 고정) — 개별 방식 + '집주인 방식' 소계를
+    구성비 내림차순으로. 지역을 바꿔가며 보는 건 지역 현황 탭의 드릴다운 몫이라
+    여기는 항상 전국 값만 다룬다."""
     sel_i = T["i"]
-    nation = region == cs.NATION
-    mine_l = cs.method_vec(D, selected, sel_i, region)
-    # 회원수는 지역으로 쪼개면 중복 계상이라 쓸 수 없다 — 전국일 때만 보여준다.
-    mine_m = (D["d"][selected]["vm"][sel_i] or [None] * len(methods)) if nation else [None] * len(methods)
+    mine_l = cs.method_vec(D, selected, sel_i, cs.NATION)
+    mine_m = D["d"][selected]["vm"][sel_i] or [None] * len(methods)
 
     if all(v is None for v in mine_l):
         st.info(f"{_eun(selected)} 이 자료에 검증방식 구분이 없습니다 "
@@ -1157,8 +1153,7 @@ def _share_table(D, selected, T, include_hg, methods, live0, tot_l0, region=cs.N
     # 개별 방식 행 + 집주인 방식 소계를 한 목록으로 만들어 구성비 하나로 같이
     # 정렬한다 — 소계가 어느 개별 방식보다 커도(보통 그렇다) 위로 올라오게.
     # 소계도 다른 행과 똑같은 모양으로 두고(강조색 없음), 이름으로만 구분한다.
-    rows_data = [dict(name=methods[j], mine=mine_l[j], tot=tot_l0[j],
-                      mem=mine_m[j] if nation else None,
+    rows_data = [dict(name=methods[j], mine=mine_l[j], tot=tot_l0[j], mem=mine_m[j],
                       mix=(cs.nz(mine_l[j]) / mine_sum * 100) if mine_sum else None,
                       sh=(cs.nz(mine_l[j]) / tot_l0[j] * 100) if tot_l0[j] else None)
                  for j in order]
@@ -1177,14 +1172,13 @@ def _share_table(D, selected, T, include_hg, methods, live0, tot_l0, region=cs.N
                  f'<td>{_num(r["mine"])}</td>'
                  + _databar(_pct(r["mix"], 1), r["mix"], color)
                  + f'<td class="dim">{_num(r["tot"])}</td><td>{_pct(r["sh"])}</td>'
-                 + (f'<td class="dim">{_num(r["mem"])}</td>' if nation else '')
+                 + f'<td class="dim">{_num(r["mem"])}</td>'
                  + '</tr>')
     st.markdown(
         '<div class="ov-table-scroll"><table class="ov-table"><thead><tr>'
         f'<th class="region name">방식</th><th>{lab} 매물 수</th><th>구성비</th>'
-        '<th>시장 매물</th><th>점유율</th>'
-        + (f'<th>{lab} 회원</th>' if nation else '')
-        + f"</tr></thead><tbody>{body}</tbody></table></div>", unsafe_allow_html=True)
+        f'<th>시장 매물</th><th>점유율</th><th>{lab} 회원</th>'
+        f"</tr></thead><tbody>{body}</tbody></table></div>", unsafe_allow_html=True)
     if own:
         st.markdown(
             '<div class="ov-footnote">집주인 방식 = '
@@ -1201,46 +1195,38 @@ def _share_table(D, selected, T, include_hg, methods, live0, tot_l0, region=cs.N
                     unsafe_allow_html=True)
 
 
-def _section_methods(D, selected, T, include_hg, region=cs.NATION, view="그래프",
-                     dl_slot=None):
-    """view='그래프'면 CP 방식별 점유율(개별) 또는 CP 비교 누적막대(전체),
-    view='표'면 시도 > 시군구 계층 표를 보여준다.
-    제목과 컨트롤은 호출하는 쪽(render)이 그린다."""
+def _section_methods(D, selected, T, include_hg, region=cs.NATION, dl_slot=None):
+    """시도 > 시군구 계층 표 — 지역을 바꿔가며 검증방식별 매물수/구성비/점유율을 본다.
+    구성 요약(방식별 시장 점유율)은 구성 비교 탭에 전국 고정으로 따로 있어(_share_table),
+    여기서는 '지역'이 주어인 드릴다운만 맡는다 — 같은 표를 두 탭에서 반복하지 않기 위해서다.
+    제목과 지역 선택 컨트롤은 호출하는 쪽(_tab_region)이 그린다."""
     sel_i = T["i"]
     methods = D["methods"]
     tot_l0 = cs.method_market(D, sel_i, include_hg, region)
     live0 = [j for j in range(len(methods)) if tot_l0[j] > 0]
-
-    if view == "표":
-        if not live0:
-            st.info("이 지역에 검증방식 데이터가 없습니다.")
-            return
-        # 검증방식 자료가 없는 CP(한공협)를 섞으면 매물수 합과 방식 합이 어긋나므로 뺀다.
-        if selected == ALL:
-            cps = [c for c in cs.market_cps(D, include_hg)
-                   if c not in D["meta"]["no_method"]]
-        elif selected == cs.PROPTIER:
-            cps = list(cs.PROPTIER_PARTS)
-        else:
-            cps = [selected]
-        if dl_slot is not None:
-            with dl_slot:
-                _dl_button(
-                    _drill_frame(D, cps, sel_i, region, methods, live0, tot_l0),
-                    f"검증방식_지역_{_cp_label(selected)}_{region}_{D['months'][sel_i]}",
-                    "cp_m_dl", "검증방식지역")
-        st.markdown(_drill_table(D, cps, sel_i, region, methods, live0, tot_l0),
-                    unsafe_allow_html=True)
-        st.markdown('<div class="ov-footnote">시·도 행을 누르면 그 아래 시·군·구가 펼쳐진다. '
-                    '구성비는 그 지역 매물 중 해당 방식의 비율, 점유율은 그 방식 시장에서의 몫이다.'
-                    '</div>', unsafe_allow_html=True)
+    if not live0:
+        st.info("이 지역에 검증방식 데이터가 없습니다.")
         return
 
+    # 검증방식 자료가 없는 CP(한공협)를 섞으면 매물수 합과 방식 합이 어긋나므로 뺀다.
     if selected == ALL:
-        return _methods_all_chart(D, T, include_hg, region, methods, live0,
-                                  key="cp_methods_region")
-
-    _share_table(D, selected, T, include_hg, methods, live0, tot_l0, region)
+        cps = [c for c in cs.market_cps(D, include_hg)
+               if c not in D["meta"]["no_method"]]
+    elif selected == cs.PROPTIER:
+        cps = list(cs.PROPTIER_PARTS)
+    else:
+        cps = [selected]
+    if dl_slot is not None:
+        with dl_slot:
+            _dl_button(
+                _drill_frame(D, cps, sel_i, region, methods, live0, tot_l0),
+                f"검증방식_지역_{_cp_label(selected)}_{region}_{D['months'][sel_i]}",
+                "cp_m_dl", "검증방식지역")
+    st.markdown(_drill_table(D, cps, sel_i, region, methods, live0, tot_l0),
+                unsafe_allow_html=True)
+    st.markdown('<div class="ov-footnote">시·도 행을 누르면 그 아래 시·군·구가 펼쳐진다. '
+                '구성비는 그 지역 매물 중 해당 방식의 비율, 점유율은 그 방식 시장에서의 몫이다.'
+                '</div>', unsafe_allow_html=True)
 
 
 # ── 섹션 8 ───────────────────────────────────────────────────────────────────
@@ -1362,7 +1348,13 @@ def _section_trend(D, selected, T, include_hg):
 
 
 def _tab_share(D, selected, T, include_hg):
-    """탭1 시장 점유율 — 지역 히트맵 → 집계표 → 추이 차트."""
+    """탭1 시장 점유율 — 전체 모드는 비교 관점(히트맵·집계표·추이) 그대로.
+    개별 모드는 히트맵(지역현황 탭 지도와 중복)·추이(비교 차트)를 빼고,
+    집계표만 접어서(기본 닫힘) 필요할 때만 다른 CP와 비교해보게 한다."""
+    if selected != ALL:
+        with st.expander("다른 CP와 비교해서 보기"):
+            _section_rank(D, selected, T, include_hg)
+        return
     _region_all(D, selected, T, include_hg)
     _rule()
     _section_rank(D, selected, T, include_hg)
@@ -1555,24 +1547,21 @@ def _tab_region(D, selected, T, include_hg):
     _section_zone_bias(D, selected, T, include_hg)
     _rule()
 
-    # 지역 필터 — 고르면 구성비·점유율이 전부 그 지역 기준으로 다시 계산된다.
+    # 지역 필터 — 고르면 표가 전부 그 지역 기준으로 다시 계산된다. 구성 요약(방식별
+    # 시장 점유율)은 구성 비교 탭에 전국 고정으로 따로 있어, 여기는 드릴다운 표 하나만 둔다
+    # — 예전엔 '그래프' 토글이 그 요약표를 다시 보여줘서 두 탭 숫자가 겹쳤다.
     # 제목이 선택한 지역을 달고 있어야 해서, 위젯을 만들기 전에 값을 먼저 읽는다.
     opts = cs.region_options(D)
     region = st.session_state.get("cp_region")
     region = region if region in opts else cs.NATION
-    st.markdown(f'<div class="ov-panel-title">지역별 검증 방식 · {region}</div>',
-                unsafe_allow_html=True)
-    # 칸 너비는 보기 모드와 무관하게 고정한다 — 엑셀 버튼이 나타나고 사라져도
-    # 그래프/표 토글이 제자리에 있어야 한다.
     c1, c2, c3 = st.columns([1.72, 1.0, 0.48])
     with c1:
-        st.selectbox("지역", opts, key="cp_region", label_visibility="collapsed")
+        st.markdown(f'<div class="ov-panel-title" style="padding-top:9px;">'
+                    f'지역별 검증 방식 · {region}</div>', unsafe_allow_html=True)
     with c2:
-        view = st.segmented_control("보기", ["그래프", "표"], default="그래프",
-                                    key="cp_mall_view",
-                                    label_visibility="collapsed") or "그래프"
+        st.selectbox("지역", opts, key="cp_region", label_visibility="collapsed")
 
-    _section_methods(D, selected, T, include_hg, region, view, dl_slot=c3)
+    _section_methods(D, selected, T, include_hg, region, dl_slot=c3)
 
 
 def _tab_compose(D, selected, T, include_hg):
@@ -1591,8 +1580,7 @@ def _tab_compose(D, selected, T, include_hg):
         st.info("이 시점에 검증방식 데이터가 없습니다.")
         return
     if selected == ALL:
-        _methods_all_chart(D, T, include_hg, cs.NATION, methods, live0,
-                          key="cp_methods_compose")
+        _methods_all_chart(D, T, include_hg, cs.NATION, methods, live0)
     else:
         _share_table(D, selected, T, include_hg, methods, live0, tot_l0)
 
