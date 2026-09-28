@@ -92,8 +92,8 @@ MAX_SERIES = 7
 SECTIONS = ["시장 점유율", "검증 방식", "구성 비교"]
 SECTION_ETC = "특이사항"
 
-# 검증방식 묶음 보기 — 범례 오른쪽 끝의 버튼. '집주인 방식'을 누르면 아래 3종만
-# 선명하게 남고 나머지는 범례에서 회색으로 빠진다(개별 범례 클릭으로 다시 켤 수 있다).
+# 검증방식 묶음 — CP별 매물 검증방식 구성 차트 위 '전체 방식/집주인 방식' 토글과
+# _share_table의 집주인 방식 소계가 같이 쓴다.
 METHOD_SETS = {"전체 방식": None, "집주인 방식": ["모바일v2", "모바일", "신홍보확인서"]}
 
 
@@ -196,6 +196,18 @@ _EXTRA_CSS = f"""
 }}
 .st-key-cp_root button[data-variant="segmented_control"][data-selected="true"] p {{
     color:#fff !important; font-weight:700 !important;
+}}
+/* 검증방식별 지역 히트맵/지도 위 버튼(점유율·건수·CP 내 비중, 엑셀 다운로드) — 지도가
+   옆 칸(CP별 매물 검증방식 구성)과 좌우로 나뉘며 좁아지자 버튼이 상대적으로 커
+   보였다. 이 줄만 살짝 줄인다(다른 곳의 38px 버튼과는 무관하게 여기만 적용). */
+.st-key-cp_root .st-key-cp_rm_basis button[data-variant="segmented_control"] {{
+    height:30px !important;
+}}
+.st-key-cp_root .st-key-cp_rm_basis button[data-variant="segmented_control"] p {{
+    font-size:.76rem !important;
+}}
+.st-key-cp_root .st-key-cp_hm_dl button {{
+    height:30px !important; padding:0 12px !important; font-size:.8rem !important;
 }}
 /* 토글은 위에 라벨 줄이 없어 혼자 27px 위로 떠 있었다. 옆 컨트롤과 중심을 맞춘다. */
 .st-key-cp_root .st-key-cp_hg_user,
@@ -400,12 +412,15 @@ def _cat_colors(n):
 
 
 def _stacked100(rows, cats, matrix, colors=None, *, height=None, highlight=None,
-                sets=None):
+                cat_focus=None):
     """100% 누적 가로 막대. rows=세로축 이름, cats=쌓을 항목, matrix[row][cat]=값.
     각 행을 100%로 정규화해 '구성이 서로 어떻게 다른가'만 보이게 한다.
 
     highlight에 행 이름을 주면 그 행만 선명하게 두고 나머지는 흐리게 처리한다(포커스).
-    sets={라벨: [cat,...] 또는 None}을 주면 범례 오른쪽 끝에 묶음 선택 버튼이 붙는다.
+    cat_focus에 항목(cats) 이름 집합을 주면 그 항목들만 선명하게 두고 나머지 항목은
+    통째로 흐리게 처리한다 — 두 포커스는 곱해져서 같이 적용된다. 예전엔 이 묶음 선택을
+    차트 안 Plotly 버튼(updatemenus)으로 넣었는데, 범례랑 겹쳐 보이는 문제가 있었다.
+    호출하는 쪽에서 진짜 Streamlit 토글로 받은 값을 여기 인자로 넘기는 편이 더 낫다.
     """
     fig = go.Figure()
     colors = colors or _cat_colors(len(cats))
@@ -414,12 +429,15 @@ def _stacked100(rows, cats, matrix, colors=None, *, height=None, highlight=None,
     dim = bool(focus) and not focus.issuperset(rows)
     opac = [1.0 if (not dim or r in focus) else 0.25 for r in rows]
     tcol = ["#FFFFFF" if (not dim or r in focus) else MUTED for r in rows]
+    cat_focus = set(cat_focus) if cat_focus else None
 
     for j, cat in enumerate(cats):
         pct = [cs.nz(matrix[r][j]) / totals[r] * 100 for r in range(len(rows))]
+        cat_factor = 1.0 if (not cat_focus or cat in cat_focus) else 0.15
+        trace_opac = [o * cat_factor for o in opac]
         fig.add_trace(go.Bar(
             x=pct, y=rows, orientation="h", name=cat,
-            marker=dict(color=colors[j], opacity=opac, line=dict(width=2, color=CARD)),
+            marker=dict(color=colors[j], opacity=trace_opac, line=dict(width=2, color=CARD)),
             text=[f"{p:.0f}%" for p in pct], textposition="inside",
             textfont=dict(size=10, color=tcol), insidetextanchor="middle",
             hovertemplate="%{y} · " + cat + " %{x:.1f}%<extra></extra>",
@@ -436,22 +454,6 @@ def _stacked100(rows, cats, matrix, colors=None, *, height=None, highlight=None,
     fig.update_layout(hovermode="closest",
                       legend=dict(orientation="h", yanchor="bottom", y=1.0, x=0,
                                   traceorder="normal", font=dict(size=10)))
-    if sets:
-        # updatemenus는 클라이언트에서 처리돼 Streamlit 재실행이 없다. 숨길 때 False가
-        # 아니라 'legendonly'를 써서 범례에는 남겨 둔다 — 하나씩 도로 켤 수 있게.
-        fig.update_layout(
-            margin=dict(l=10, r=10, t=52, b=10),
-            updatemenus=[dict(
-                type="buttons", direction="right", showactive=True, active=0,
-                x=1, xanchor="right", y=1.0, yanchor="bottom",
-                pad=dict(t=0, b=4, l=0, r=0),
-                bgcolor=CARD, bordercolor=LINE, borderwidth=1,
-                font=dict(size=10, color=INK),
-                buttons=[dict(
-                    label=f"  {lab}  ", method="restyle",
-                    args=[{"visible": [True if pick is None or c in pick
-                                       else "legendonly" for c in cats]}])
-                    for lab, pick in sets.items()])])
     return fig
 
 
@@ -922,7 +924,13 @@ def _methods_all_chart(D, T, include_hg, region, methods, live):
     if not cps:
         st.info("이 지역에 검증방식 데이터가 없습니다.")
         return
-    st.plotly_chart(_stacked100(cps, names, mat, sets=METHOD_SETS),
+    # 예전엔 이 자리가 차트 안 Plotly 버튼이라 범례랑 겹쳐 보였다 — 지도 쪽 지표 토글과
+    # 같은 모양의 진짜 Streamlit 버튼으로 바꿔서 범례 위, 차트 밖에 둔다.
+    scope = st.segmented_control(
+        "범위", ["전체 방식", "집주인 방식"], default="전체 방식",
+        key="cp_methods_scope", label_visibility="collapsed") or "전체 방식"
+    cat_focus = set(METHOD_SETS["집주인 방식"]) if scope == "집주인 방식" else None
+    st.plotly_chart(_stacked100(cps, names, mat, cat_focus=cat_focus),
                     use_container_width=True, config={"displayModeBar": False})
 
 
@@ -1383,17 +1391,18 @@ def _tab_method(D, selected, T, include_hg):
         methods = D["methods"]
         tot_l0 = cs.method_market(D, sel_i, include_hg, cs.NATION)
         live0 = [j for j in range(len(methods)) if tot_l0[j] > 0]
-        # 왼쪽(지도) 칸은 제목 밑에 드롭다운 줄 + 지표토글·엑셀 줄이 하나 더 있어 지도가
-        # 그만큼 아래에서 시작한다. 오른쪽은 그 두 줄이 없어 표가 더 위에서 시작해
-        # 나란히 보면 어긋나 보인다 — 그 높이만큼 빈 칸을 넣어 지도 시작선에 맞춘다.
-        st.markdown('<div class="ov-panel-title" style="padding-top:9px;">CP별 매물 검증방식 구성</div>'
-                    '<div style="height:75px;"></div>',
+        st.markdown('<div class="ov-panel-title" style="padding-top:9px;">CP별 매물 검증방식 구성</div>',
                     unsafe_allow_html=True)
+        # 왼쪽(지도) 칸은 제목 밑에 드롭다운 줄 + 지표토글·엑셀 줄이 하나 더 있어 지도가
+        # 그만큼 아래에서 시작한다. 전체 모드는 바로 아래에 만드는 범위 토글이 그 자리를
+        # 채우지만, 개별 모드(표)·데이터 없음은 대신할 줄이 없어 어긋나 보여 빈 칸을 넣는다.
         if not live0:
+            st.markdown('<div style="height:75px;"></div>', unsafe_allow_html=True)
             st.info("이 시점에 검증방식 데이터가 없습니다.")
         elif selected == ALL:
             _methods_all_chart(D, T, include_hg, cs.NATION, methods, live0)
         else:
+            st.markdown('<div style="height:75px;"></div>', unsafe_allow_html=True)
             _share_table(D, selected, T, include_hg, methods, live0, tot_l0)
     _rule()
 
