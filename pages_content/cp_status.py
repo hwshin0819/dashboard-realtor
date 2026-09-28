@@ -152,7 +152,6 @@ _EXTRA_CSS = f"""
 .st-key-cp_root .st-key-cp_mix_view,
 .st-key-cp_root .st-key-cp_t2_dl,
 .st-key-cp_root .st-key-cp_m_dl,
-.st-key-cp_root .st-key-cp_hm_dl,
 .st-key-cp_root .st-key-cp_methods_scope {{
     display:flex; justify-content:flex-end; width:100%;
 }}
@@ -210,8 +209,16 @@ _EXTRA_CSS = f"""
 .st-key-cp_root .st-key-cp_methods_scope button[data-variant="segmented_control"] p {{
     font-size:.76rem !important;
 }}
-.st-key-cp_root .st-key-cp_hm_dl button {{
+/* 엑셀 다운로드 — 앱 전체 기본은 채워진 초록 버튼(theme.py)인데, CP 현황에서는
+   점유율/건수/CP내비중 같은 흐린 회색 버튼들 사이에 있어 혼자 튀어 보였다.
+   이 페이지 안의 엑셀 버튼만 그 옆 토글과 같은 크기·회색 테두리 스타일로 바꾼다. */
+.st-key-cp_root div[data-testid="stDownloadButton"] button {{
     height:30px !important; padding:0 12px !important; font-size:.76rem !important;
+    font-weight:500 !important; border-radius:8px !important;
+    border:1.5px solid {LINE} !important; background:{CARD} !important; color:{MUTED} !important;
+}}
+.st-key-cp_root div[data-testid="stDownloadButton"] button:hover {{
+    border-color:{MUTED} !important; color:{INK} !important; background:{CARD} !important;
 }}
 /* 토글은 위에 라벨 줄이 없어 혼자 27px 위로 떠 있었다. 옆 컨트롤과 중심을 맞춘다. */
 .st-key-cp_root .st-key-cp_hg_user,
@@ -947,9 +954,9 @@ def _region_methods_all(D, selected, T, include_hg, focus):
     sidos = D["sidos"]
     idx = [D["methods"].index(p) for p in HEATMAP_METRICS[focus]]
 
-    # 제목이 길어져서(검증방식별 지역 히트맵/지도) 한 줄에 드롭다운·지표·엑셀까지 다 넣으면
-    # 잘렸다 — 제목+검증방식 드롭다운을 한 줄, 지표 토글+엑셀 버튼(오른쪽 정렬)을 그 아래
-    # 한 줄로 나눈다. 엑셀 버튼은 여기서 자리만 잡아두고 데이터가 준비된 뒤 채운다.
+    # 제목이 길어져서(검증방식별 지역 히트맵/지도) 한 줄에 드롭다운·지표까지 다 넣으면
+    # 잘렸다 — 제목+검증방식 드롭다운을 한 줄, 지표 토글(오른쪽 정렬)을 그 아래 한 줄로
+    # 나눈다. 엑셀 다운로드는 표시할 값이 화면과 같은 시·도 집계뿐이라 따로 없앴다.
     head_l, head_m = st.columns([2.0, 1.0])
     head_l.markdown(
         '<div class="ov-panel-title" style="padding-top:9px;">'
@@ -959,7 +966,7 @@ def _region_methods_all(D, selected, T, include_hg, focus):
         st.selectbox("검증방식", list(HEATMAP_METRICS), key=HM_KEY,
                      format_func=lambda k: HM_LABEL.get(k, k),
                      label_visibility="collapsed")
-    _, head_r, head_d = st.columns([1.3, 1.1, 0.6])
+    _, head_r = st.columns([1.3, 1.7])
     with head_r:
         basis = st.segmented_control(
             "보기 지표", ["점유율", "건수", "CP 내 비중"], default="점유율",
@@ -1004,13 +1011,6 @@ def _region_methods_all(D, selected, T, include_hg, focus):
                 rows.append(cp)
                 z.append(vals)
 
-        hm = pd.DataFrame(z, index=rows, columns=sidos).round(fmt["digits"]).reset_index()
-        hm = hm.rename(columns={"index": "CP"})
-        if fmt["digits"] == 0:
-            hm[sidos] = hm[sidos].astype("Int64")
-        with head_d:      # 위에서 잡아둔 헤더 칸에 나중에 채워 넣는다
-            _dl_button(hm, f"지역히트맵_{focus}_{basis}_{D['months'][i]}",
-                       "cp_hm_dl", "히트맵")
         st.plotly_chart(_heatmap(rows, sidos, z, **fmt),
                         use_container_width=True, config={"displayModeBar": False})
         return
@@ -1037,12 +1037,6 @@ def _region_methods_all(D, selected, T, include_hg, focus):
         return
 
     lab = _own(selected)
-    df = pd.DataFrame({"시도": sidos,
-                       f"{focus} {basis}": [round(v, fmt["digits"]) if v is not None else None
-                                            for v in vals]})
-    with head_d:
-        _dl_button(df, f"지역지도_{_cp_label(selected)}_{focus}_{basis}_{D['months'][i]}",
-                   "cp_hm_dl", "지역지도")
     st.plotly_chart(_sido_choropleth(sidos, vals, digits=fmt["digits"], suffix=fmt["suffix"]),
                     use_container_width=True, config={"displayModeBar": False})
     st.markdown(
