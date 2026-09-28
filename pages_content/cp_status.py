@@ -119,6 +119,14 @@ _EXTRA_CSS = f"""
 .st-key-cp_root .ov-table tr.me td.region {{ background:{ACCENT_SOFT}; }}
 .st-key-cp_root .ov-table td.name, .st-key-cp_root .ov-table th.name {{ text-align:left; }}
 .st-key-cp_root .ov-table td.dim {{ color:{MUTED}; }}
+/* 데이터 막대 칸 안에서 건수 뒤에 붙는 비율 — 숫자와 구분되게 옅은 색+살짝 작게 */
+.st-key-cp_root .ov-dbpct {{ color:{MUTED}; font-size:.88em; margin-left:5px; }}
+
+/* 검증방식 드롭다운 — Streamlit 셀렉트박스는 기본 최소폭이 200px라, 지도를 옆 칸과
+   좌우로 나눠서 폭이 좁아지면 칸을 넘어 옆(CP별 매물 검증방식 구성) 위로 겹쳐 보였다.
+   칸 폭에 맞게 줄이고, 넘치는 글자는 말줄임표로 자른다. */
+.st-key-cp_root .st-key-cp_hm_metric {{ width:100% !important; min-width:0 !important; }}
+.st-key-cp_root .st-key-cp_hm_metric input {{ text-overflow:ellipsis; }}
 
 /* 이슈 CP 카드 */
 .st-key-cp_root .cp-issues {{ display:grid; grid-template-columns:repeat(3,1fr); gap:12px; }}
@@ -1037,7 +1045,6 @@ def _share_table(D, selected, T, include_hg, methods, live0, tot_l0):
     (_section_methods)의 몫이라, 여기는 항상 전국 값만 다룬다."""
     sel_i = T["i"]
     mine_l = cs.method_vec(D, selected, sel_i, cs.NATION)
-    mine_m = D["d"][selected]["vm"][sel_i] or [None] * len(methods)
 
     if all(v is None for v in mine_l):
         st.info(f"{_eun(selected)} 이 자료에 검증방식 구분이 없습니다 "
@@ -1057,7 +1064,7 @@ def _share_table(D, selected, T, include_hg, methods, live0, tot_l0):
     # 개별 방식 행 + 집주인 방식 소계를 한 목록으로 만들어 구성비 하나로 같이
     # 정렬한다 — 소계가 어느 개별 방식보다 커도(보통 그렇다) 위로 올라오게.
     # 소계도 다른 행과 똑같은 모양으로 두고(강조색 없음), 이름으로만 구분한다.
-    rows_data = [dict(name=methods[j], mine=mine_l[j], tot=tot_l0[j], mem=mine_m[j],
+    rows_data = [dict(name=methods[j], mine=mine_l[j], tot=tot_l0[j],
                       mix=(cs.nz(mine_l[j]) / mine_sum * 100) if mine_sum else None,
                       sh=(cs.nz(mine_l[j]) / tot_l0[j] * 100) if tot_l0[j] else None)
                  for j in order]
@@ -1065,30 +1072,30 @@ def _share_table(D, selected, T, include_hg, methods, live0, tot_l0):
         om = sum(cs.nz(mine_l[j]) for j in own)
         ot = sum(tot_l0[j] for j in own)
         rows_data.append(dict(
-            name="집주인 방식", mine=om, tot=ot, mem=None,
+            name="집주인 방식", mine=om, tot=ot,
             mix=(om / mine_sum * 100) if mine_sum else None,
             sh=(om / ot * 100) if ot else None))
     rows_data.sort(key=lambda r: -(r["mix"] or 0))
 
+    # 구성비·점유율을 별도 열로 안 두고, 건수 칸 안에 데이터 막대 배경 + 비율을 같이 넣는다
+    # (숫자와 비율이 늘 붙어 있어야 하는 값이라 열을 나누면 오히려 눈이 왔다갔다 해야 했다).
     body = ""
     for r in rows_data:
+        mine_cell = f'{_num(r["mine"])}<span class="ov-dbpct">· {_pct(r["mix"], 1)}</span>'
+        tot_cell = f'{_num(r["tot"])}<span class="ov-dbpct">· {_pct(r["sh"])}</span>'
         body += (f'<tr><td class="region name">{r["name"]}</td>'
-                 f'<td>{_num(r["mine"])}</td>'
-                 + _databar(_pct(r["mix"], 1), r["mix"], color)
-                 + f'<td class="dim">{_num(r["tot"])}</td><td>{_pct(r["sh"])}</td>'
-                 + f'<td class="dim">{_num(r["mem"])}</td>'
+                 + _databar(mine_cell, r["mix"], color)
+                 + _databar(tot_cell, r["sh"], color)
                  + '</tr>')
     st.markdown(
         '<div class="ov-table-scroll"><table class="ov-table"><thead><tr>'
-        f'<th class="region name">방식</th><th>{lab} 매물 수</th><th>구성비</th>'
-        f'<th>시장 매물</th><th>점유율</th><th>{lab} 회원</th>'
+        f'<th class="region name">방식</th><th>{lab} 매물 수(구성비)</th>'
+        f'<th>시장 매물(점유율)</th>'
         f"</tr></thead><tbody>{body}</tbody></table></div>", unsafe_allow_html=True)
     if own:
         st.markdown(
             '<div class="ov-footnote">집주인 방식 = '
-            + " + ".join(methods[j] for j in own)
-            + '. 회원수는 한 회원이 여러 방식에 중복 계상돼 더할 수 없어 – 로 둔다.'
-              '</div>', unsafe_allow_html=True)
+            + " + ".join(methods[j] for j in own) + '.</div>', unsafe_allow_html=True)
 
     notes = []
     if D["months"][sel_i] in D["meta"]["restored_months"]:
@@ -1364,24 +1371,26 @@ def _section_listing_mix(D, selected, T, include_hg):
 
 
 def _tab_method(D, selected, T, include_hg):
-    """탭2 검증 방식 — 검증방식과 관련된 화면만 모은다: 지역 히트맵/지도, CP별 검증방식
-    구성, 지역별 검증방식 표. 매물유형·권역(수도권/지방) 구성비는 구성 비교 탭으로 옮겼다."""
+    """탭2 검증 방식 — 검증방식과 관련된 화면만 모은다: 지역 히트맵/지도와 CP별 검증방식
+    구성을 좌우로 나란히, 그 아래 지역별 검증방식 표. 매물유형·권역(수도권/지방) 구성비는
+    구성 비교 탭으로 옮겼다."""
     focus = _hm_metric()
-    _region_methods_all(D, selected, T, include_hg, focus)
-    _rule()
-
-    sel_i = T["i"]
-    methods = D["methods"]
-    tot_l0 = cs.method_market(D, sel_i, include_hg, cs.NATION)
-    live0 = [j for j in range(len(methods)) if tot_l0[j] > 0]
-    st.markdown('<div class="ov-panel-title" style="padding-top:9px;">CP별 매물 검증방식 구성</div>',
-                unsafe_allow_html=True)
-    if not live0:
-        st.info("이 시점에 검증방식 데이터가 없습니다.")
-    elif selected == ALL:
-        _methods_all_chart(D, T, include_hg, cs.NATION, methods, live0)
-    else:
-        _share_table(D, selected, T, include_hg, methods, live0, tot_l0)
+    col_map, col_share = st.columns([1.25, 1.0])
+    with col_map:
+        _region_methods_all(D, selected, T, include_hg, focus)
+    with col_share:
+        sel_i = T["i"]
+        methods = D["methods"]
+        tot_l0 = cs.method_market(D, sel_i, include_hg, cs.NATION)
+        live0 = [j for j in range(len(methods)) if tot_l0[j] > 0]
+        st.markdown('<div class="ov-panel-title" style="padding-top:9px;">CP별 매물 검증방식 구성</div>',
+                    unsafe_allow_html=True)
+        if not live0:
+            st.info("이 시점에 검증방식 데이터가 없습니다.")
+        elif selected == ALL:
+            _methods_all_chart(D, T, include_hg, cs.NATION, methods, live0)
+        else:
+            _share_table(D, selected, T, include_hg, methods, live0, tot_l0)
     _rule()
 
     # 지역 필터 — 고르면 표가 전부 그 지역 기준으로 다시 계산된다.
