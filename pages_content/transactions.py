@@ -26,7 +26,6 @@ _LINE_PRICE = "#F97316"
 _EXTRA_CSS = f"""
 <style>
 .st-key-transactions_root .ov-stats {{ grid-template-columns:repeat(3,1fr); }}
-.st-key-transactions_root .ov-stats.ov-stats-peak {{ grid-template-columns:repeat(4,1fr); }}
 @media (max-width:900px) {{
     .st-key-transactions_root .ov-stats {{ grid-template-columns:repeat(1,1fr); }}
 }}
@@ -66,23 +65,6 @@ def _apply_preset(all_months: list, confirmed_month: str):
     start, end = mapping[preset]
     st.session_state["re_start"] = start
     st.session_state["re_end"] = end
-
-
-def _change_vs_base(series: list, base_month: str, latest_month: str) -> dict | None:
-    """월별 시계열(건수 포함)에서 기준월(base_month)과 확정월(latest_month)을 비교해 등락률을 계산한다."""
-    if not series:
-        return None
-    base_row = next((r for r in series if r["월"] == base_month), None)
-    latest_row = next((r for r in series if r["월"] == latest_month), None)
-    if base_row is None or latest_row is None or not base_row["건수"]:
-        return None
-    base_count = base_row["건수"] or 0
-    latest_count = latest_row["건수"] or 0
-    pct = (latest_count - base_count) / base_count * 100
-    return {
-        "base_month": base_month, "base_count": base_count,
-        "latest_month": latest_month, "latest_count": latest_count, "pct": pct,
-    }
 
 
 def _quarter_label(ym: str) -> str:
@@ -267,33 +249,6 @@ def render():
             + "</div>"
         )
         st.markdown(jw_cards_html, unsafe_allow_html=True)
-
-        # ---- 2020-06 대비 매매 거래량 (전국/서울/수도권/지방) ----
-        BASE_MONTH = "2020-06"
-        COMPARE_MONTH = "2026-06"
-        peak_groups = [
-            ("전국", None),
-            ("서울", ["서울"]),
-            ("수도권", ru.METRO_SIDOS),
-            ("지방", ru.NON_METRO_SIDOS),
-        ]
-        peak_cards = []
-        for label, sidos in peak_groups:
-            stat = _change_vs_base(res.load_monthly_series_for_sidos(sidos, "전체", "매매"), BASE_MONTH, COMPARE_MONTH)
-            if stat is None:
-                peak_cards.append(
-                    f'<div class="ov-stat"><div class="label">{label} 매매 거래량 ({BASE_MONTH} 대비)</div>'
-                    '<div class="value">–</div><div class="delta">데이터 없음</div></div>'
-                )
-                continue
-            cls = "close" if stat["pct"] < 0 else "open"
-            peak_cards.append(
-                f'<div class="ov-stat {cls}"><div class="label">{label} 매매 거래량 ({BASE_MONTH} 대비)</div>'
-                f'<div class="value">{stat["pct"]:+.1f}%</div>'
-                f'<div class="delta">{stat["base_month"]} {stat["base_count"]:,}건 → '
-                f'{stat["latest_month"]} {stat["latest_count"]:,}건</div></div>'
-            )
-        st.markdown('<div class="ov-stats ov-stats-peak">' + "".join(peak_cards) + "</div>", unsafe_allow_html=True)
 
         # ---- 서브탭 ----
         tabA, tabB = st.tabs(["거래량 추이", "유형별 현황"])
