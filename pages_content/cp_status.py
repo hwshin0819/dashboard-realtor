@@ -1577,7 +1577,7 @@ def render():
 
         # ---- 전역 컨트롤 ----
         options = _cp_options(D)
-        default_i = options.index("이실장") if "이실장" in options else 0
+        default_i = options.index(ALL) if ALL in options else 0
         # 기간 슬라이더는 넓어야 하고 시점 드롭다운은 그럴 필요가 없다. 어느 쪽인지는
         # 위젯을 만들기 전에 session_state에서 읽어 칸 너비를 정한다.
         wide = (st.session_state.get("cp_tmode") or "시점") == "기간"
