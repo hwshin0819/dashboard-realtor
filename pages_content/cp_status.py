@@ -1383,7 +1383,11 @@ def _tab_method(D, selected, T, include_hg):
         methods = D["methods"]
         tot_l0 = cs.method_market(D, sel_i, include_hg, cs.NATION)
         live0 = [j for j in range(len(methods)) if tot_l0[j] > 0]
-        st.markdown('<div class="ov-panel-title" style="padding-top:9px;">CP별 매물 검증방식 구성</div>',
+        # 왼쪽(지도) 칸은 제목 밑에 드롭다운 줄 + 지표토글·엑셀 줄이 하나 더 있어 지도가
+        # 그만큼 아래에서 시작한다. 오른쪽은 그 두 줄이 없어 표가 더 위에서 시작해
+        # 나란히 보면 어긋나 보인다 — 그 높이만큼 빈 칸을 넣어 지도 시작선에 맞춘다.
+        st.markdown('<div class="ov-panel-title" style="padding-top:9px;">CP별 매물 검증방식 구성</div>'
+                    '<div style="height:75px;"></div>',
                     unsafe_allow_html=True)
         if not live0:
             st.info("이 시점에 검증방식 데이터가 없습니다.")
