@@ -47,6 +47,10 @@ COLOR_HG = "#9AA4A0"      # 한공협(협회라 성격이 달라 회색 고정)
 COLOR_ETC = "#C4CAC6"     # 상위권 밖을 묶은 '기타'
 PILL_GREEN = "#027A48"    # 세그먼트 버튼 선택 상태 (실거래량 동향과 같은 배색 지침)
 
+# '구성 비교' 탭(매물 유형·권역) 전용 팔레트 — 원색 느낌이 강하다는 피드백으로
+# PALETTE(검증방식 8색, CVD 검증 완료)와 분리해 톤 다운된 색으로 따로 둔다.
+COMPOSE_PALETTE = ["#4A7BB0", "#E67E22", "#16A085", "#95A5A6"]
+
 # 검증방식처럼 여러 계열을 한 그림에 쌓을 때 쓰는 순서 고정 팔레트.
 # (dataviz 기준 팔레트 슬롯 1~8 — 인접쌍 CVD ΔE 9.1 / 일반시야 19.6으로 검증 통과.
 #  대비 경고가 있는 슬롯이 있어 '막대 안 숫자 라벨 + 표 병기'를 반드시 함께 쓴다.)
@@ -122,12 +126,6 @@ _EXTRA_CSS = f"""
 /* 데이터 막대 칸 안에서 건수 뒤에 붙는 비율 — 숫자와 구분되게 옅은 색+살짝 작게 */
 .st-key-cp_root .ov-dbpct {{ color:{MUTED}; font-size:.88em; margin-left:5px; }}
 
-/* 검증방식 드롭다운 — Streamlit 셀렉트박스는 기본 최소폭이 200px라, 지도를 옆 칸과
-   좌우로 나눠서 폭이 좁아지면 칸을 넘어 옆(CP별 매물 검증방식 구성) 위로 겹쳐 보였다.
-   칸 폭에 맞게 줄이고, 넘치는 글자는 말줄임표로 자른다. */
-.st-key-cp_root .st-key-cp_hm_metric {{ width:100% !important; min-width:0 !important; }}
-.st-key-cp_root .st-key-cp_hm_metric input {{ text-overflow:ellipsis; }}
-
 /* 이슈 CP 카드 */
 .st-key-cp_root .cp-issues {{ display:grid; grid-template-columns:repeat(3,1fr); gap:12px; }}
 @media (max-width:900px) {{ .st-key-cp_root .cp-issues {{ grid-template-columns:repeat(1,1fr); }} }}
@@ -150,10 +148,20 @@ _EXTRA_CSS = f"""
 .st-key-cp_root .st-key-cp_rm_basis,
 .st-key-cp_root .st-key-cp_zone_view,
 .st-key-cp_root .st-key-cp_mix_view,
-.st-key-cp_root .st-key-cp_t2_dl,
 .st-key-cp_root .st-key-cp_m_dl,
 .st-key-cp_root .st-key-cp_methods_scope {{
     display:flex; justify-content:flex-end; width:100%;
+}}
+
+/* 구성 비교 탭 표(매물 유형 · 권역편중) — 숫자 칸은 오른쪽, 이름(한글/영문) 칸은 가운데.
+   첫 두 칸(cpmix: CP명 / rgdrill: 권역+시도명)만 텍스트고 나머지는 전부 숫자라
+   열 순서(nth-child)로 가른다 — class는 dim(흐린 색)이 텍스트·숫자 칸에 섞여 쓰여 못 믿는다. */
+.st-key-cp_root #cpmix th, .st-key-cp_root #cpmix td {{ text-align:right; }}
+.st-key-cp_root #cpmix th:first-child, .st-key-cp_root #cpmix td:first-child {{ text-align:center; }}
+.st-key-cp_root #rgdrill th, .st-key-cp_root #rgdrill td {{ text-align:right; }}
+.st-key-cp_root #rgdrill th:nth-child(1), .st-key-cp_root #rgdrill td:nth-child(1),
+.st-key-cp_root #rgdrill th:nth-child(2), .st-key-cp_root #rgdrill td:nth-child(2) {{
+    text-align:center;
 }}
 
 /* 시도 > 시군구 드릴다운 — 하위 행은 기본으로 접혀 있고 체크박스로 펼친다 */
@@ -202,20 +210,29 @@ _EXTRA_CSS = f"""
    나뉘며 좁아지자 버튼이 상대적으로 커 보였다. 넷 다 점유율 버튼 크기로 맞춘다
    (다른 곳의 38px 버튼과는 무관하게 이 네 위젯에만 적용). */
 .st-key-cp_root .st-key-cp_rm_basis button[data-variant="segmented_control"],
-.st-key-cp_root .st-key-cp_methods_scope button[data-variant="segmented_control"] {{
+.st-key-cp_root .st-key-cp_methods_scope button[data-variant="segmented_control"],
+.st-key-cp_root .st-key-cp_mix_view button[data-variant="segmented_control"],
+.st-key-cp_root .st-key-cp_zone_view button[data-variant="segmented_control"] {{
     height:30px !important;
 }}
 .st-key-cp_root .st-key-cp_rm_basis button[data-variant="segmented_control"] p,
-.st-key-cp_root .st-key-cp_methods_scope button[data-variant="segmented_control"] p {{
+.st-key-cp_root .st-key-cp_methods_scope button[data-variant="segmented_control"] p,
+.st-key-cp_root .st-key-cp_mix_view button[data-variant="segmented_control"] p,
+.st-key-cp_root .st-key-cp_zone_view button[data-variant="segmented_control"] p {{
     font-size:.76rem !important;
 }}
 /* 엑셀 다운로드 — 앱 전체 기본은 채워진 초록 버튼(theme.py)인데, CP 현황에서는
    점유율/건수/CP내비중 같은 흐린 회색 버튼들 사이에 있어 혼자 튀어 보였다.
-   이 페이지 안의 엑셀 버튼만 그 옆 토글과 같은 크기·회색 테두리 스타일로 바꾼다. */
-.st-key-cp_root div[data-testid="stDownloadButton"] button {{
-    height:30px !important; padding:0 12px !important; font-size:.76rem !important;
+   이 페이지 안의 엑셀 버튼만 그 옆 토글과 같은 크기(높이 30px·패딩 4px 16px)·
+   회색 테두리 스타일로 바꾼다. */
+.st-key-cp_root div[data-testid="stDownloadButton"] button,
+.st-key-cp_root div[data-testid="stDownloadButton"] button[data-testid="stBaseButton-secondary"] {{
+    height:30px !important; min-height:30px !important; padding:4px 16px !important;
     font-weight:500 !important; border-radius:8px !important;
     border:1.5px solid {LINE} !important; background:{CARD} !important; color:{MUTED} !important;
+}}
+.st-key-cp_root div[data-testid="stDownloadButton"] button p {{
+    font-size:.76rem !important;
 }}
 .st-key-cp_root div[data-testid="stDownloadButton"] button:hover {{
     border-color:{MUTED} !important; color:{INK} !important; background:{CARD} !important;
@@ -230,8 +247,19 @@ _EXTRA_CSS = f"""
     gap:6px !important;
 }}
 
-/* 검증방식 드롭다운은 너무 넓어지지 않게 */
-.st-key-cp_root .st-key-{HM_KEY} {{ max-width:300px; min-width:200px; margin-left:auto; }}
+/* 검증방식 드롭다운(집주인 방식)과 지역별 검증방식의 지역 드롭다운(전체) — 옆 토글과
+   같은 크기(높이 30px·패딩 4px 16px·글자 .76rem)로 맞춘다. 최신 Streamlit 셀렉트박스는
+   옛 baseweb select가 아니라 react-aria ComboBox 구조라 group/combobox 인풋을 직접 짚는다. */
+.st-key-cp_root .st-key-{HM_KEY} {{ max-width:320px !important; min-width:240px !important; width:auto !important; }}
+.st-key-cp_root .st-key-{HM_KEY} div[role="group"],
+.st-key-cp_root .st-key-cp_region div[role="group"] {{
+    height:30px !important; min-height:30px !important;
+}}
+.st-key-cp_root .st-key-{HM_KEY} input[role="combobox"],
+.st-key-cp_root .st-key-cp_region input[role="combobox"] {{
+    padding:4px 16px !important; font-size:.76rem !important;
+}}
+.st-key-cp_root .st-key-{HM_KEY} input[role="combobox"] {{ text-overflow:ellipsis; }}
 
 .st-key-cp_root .cp-note {{ font-size:.83rem; line-height:1.75; }}
 .st-key-cp_root .cp-note b {{ color:{INK}; }}
@@ -955,18 +983,18 @@ def _region_methods_all(D, selected, T, include_hg, focus):
     idx = [D["methods"].index(p) for p in HEATMAP_METRICS[focus]]
 
     # 제목이 길어져서(검증방식별 지역 히트맵/지도) 한 줄에 드롭다운·지표까지 다 넣으면
-    # 잘렸다 — 제목+검증방식 드롭다운을 한 줄, 지표 토글(오른쪽 정렬)을 그 아래 한 줄로
-    # 나눈다. 엑셀 다운로드는 표시할 값이 화면과 같은 시·도 집계뿐이라 따로 없앴다.
-    head_l, head_m = st.columns([2.0, 1.0])
-    head_l.markdown(
+    # 잘렸다 — 제목을 한 줄로 두고, 검증방식 드롭다운(왼쪽)과 지표 토글(오른쪽 정렬)을
+    # 그 아래 한 줄에 같이 둔다. 엑셀 다운로드는 표시할 값이 화면과 같은 시·도 집계뿐이라
+    # 따로 없앴다.
+    st.markdown(
         '<div class="ov-panel-title" style="padding-top:9px;">'
         + ("검증방식별 지역 히트맵" if selected == ALL else "검증방식별 지역 지도") + "</div>",
         unsafe_allow_html=True)
-    with head_m:
+    head_dd, _, head_r = st.columns([1.0, 1.3, 1.7])
+    with head_dd:
         st.selectbox("검증방식", list(HEATMAP_METRICS), key=HM_KEY,
                      format_func=lambda k: HM_LABEL.get(k, k),
                      label_visibility="collapsed")
-    _, head_r = st.columns([1.3, 1.7])
     with head_r:
         basis = st.segmented_control(
             "보기 지표", ["점유율", "건수", "CP 내 비중"], default="점유율",
@@ -987,8 +1015,7 @@ def _region_methods_all(D, selected, T, include_hg, focus):
 
     # 건수는 정수, 비율은 %. 점유율도 정수로 반올림한다(0.5% 미만은 0%로 뭉개진다).
     fmt = ({"unit": "", "digits": 0, "suffix": ""} if basis == "건수"
-           else {"unit": "%", "digits": 0, "suffix": "%"} if basis == "점유율"
-           else {"unit": "%", "digits": 1, "suffix": "%"})
+           else {"unit": "%", "digits": 0, "suffix": "%"})
 
     if selected == ALL:
         rows, z = [], []
@@ -1039,9 +1066,6 @@ def _region_methods_all(D, selected, T, include_hg, focus):
     lab = _own(selected)
     st.plotly_chart(_sido_choropleth(sidos, vals, digits=fmt["digits"], suffix=fmt["suffix"]),
                     use_container_width=True, config={"displayModeBar": False})
-    st.markdown(
-        f'<div class="ov-footnote">색이 진할수록 {lab}의 {focus} {basis}이 높은 시·도다. '
-        '시/군/구 단위 경계 데이터가 없어 시/도 단위로 본다.</div>', unsafe_allow_html=True)
 
 
 
@@ -1098,10 +1122,6 @@ def _share_table(D, selected, T, include_hg, methods, live0, tot_l0):
         f'<th class="region name">방식</th><th>{lab} 매물 수(구성비)</th>'
         f'<th>시장 매물(점유율)</th>'
         f"</tr></thead><tbody>{body}</tbody></table></div>", unsafe_allow_html=True)
-    if own:
-        st.markdown(
-            '<div class="ov-footnote">집주인 방식 = '
-            + " + ".join(methods[j] for j in own) + '.</div>', unsafe_allow_html=True)
 
     notes = []
     if D["months"][sel_i] in D["meta"]["restored_months"]:
@@ -1141,9 +1161,6 @@ def _section_methods(D, selected, T, include_hg, region=cs.NATION, dl_slot=None)
                 "cp_m_dl", "검증방식지역")
     st.markdown(_drill_table(D, cps, sel_i, region, methods, live0, tot_l0),
                 unsafe_allow_html=True)
-    st.markdown('<div class="ov-footnote">시·도 행을 누르면 그 아래 시·군·구가 펼쳐진다. '
-                '구성비는 그 지역 매물 중 해당 방식의 비율, 점유율은 그 방식 시장에서의 몫이다.'
-                '</div>', unsafe_allow_html=True)
 
 
 # ── 섹션 8 ───────────────────────────────────────────────────────────────────
@@ -1241,34 +1258,11 @@ def _attr_matrix(D, T, include_hg, axis_key, axis_names):
     return cps, mat, tot
 
 
-def _attr_frame(cps, mat, tot, axis_names):
-    """속성 구성 표의 원본 데이터. 화면 표와 엑셀이 같은 숫자를 쓰도록 한 곳에서 만든다
-    (엑셀에는 서식 없는 raw 숫자를 넣어 받는 쪽에서 다시 계산할 수 있게 한다)."""
-    recs = []
-    for k, c in enumerate(cps + ["시장 전체"]):
-        row = mat[k] if k < len(cps) else tot
-        base = sum(row) or 1
-        r = {"CP": c, "매물수": sum(row)}
-        for j, n in enumerate(axis_names):
-            r[f"{n} 건수"] = row[j]
-            r[f"{n} 구성비(%)"] = round(row[j] / base * 100, 1)
-            r[f"{n} 점유율(%)"] = (100.0 if k >= len(cps)
-                                 else (round(row[j] / tot[j] * 100, 2) if tot[j] else None))
-        recs.append(r)
-    return pd.DataFrame(recs)
-
-
 def _section_zone_bias(D, selected, T, include_hg):
     """CP별 권역별(수도권/지방) 구성비 — 매물수 기준 지역 편중, 시·도 > 시·군·구까지 드릴다운.
     검증방식과 무관하게 '어디에 매물이 몰려 있나'만 본다."""
     i = T["i"]
-    stamp = D["months"][i]
-    # 차트 보기엔 엑셀 버튼이 없어 그 칸(c3)만큼 오른쪽이 비어 보였다 — 표로 보기일 때만
-    # 칸을 셋으로 나누고, 차트 보기는 둘로 합쳐 토글이 진짜 오른쪽 끝까지 붙게 한다.
-    wide = (st.session_state.get("cp_zone_view") or "차트 보기") != "표로 보기"
-    cols = st.columns([1.72, 1.48] if wide else [1.72, 1.0, 0.48])
-    c1, c2 = cols[0], cols[1]
-    c3 = cols[2] if len(cols) > 2 else None
+    c1, c2 = st.columns([1.72, 1.48])
     with c1:
         st.markdown('<div class="ov-panel-title" style="padding-top:9px;">'
                     'CP별 권역별(수도권/지방) 구성비</div>',
@@ -1291,7 +1285,7 @@ def _section_zone_bias(D, selected, T, include_hg):
         # 표가 지역 선택(수도권/지방 포함)에 매물수까지 이미 보여줘서 그 세부가 통째로
         # 중복이었다 — 클릭 드릴다운은 없애고 차트만 남긴다.
         st.plotly_chart(
-            _stacked100(cps, D["zones"], mat,
+            _stacked100(cps, D["zones"], mat, colors=COMPOSE_PALETTE[:len(D["zones"])],
                         highlight=None if selected == ALL else me),
             use_container_width=True, config={"displayModeBar": False})
         return
@@ -1302,26 +1296,13 @@ def _section_zone_bias(D, selected, T, include_hg):
                       else [selected]))
     lab = _own(selected)
     frame = _region_drill_frame(D, mine_cps, cs.market_cps(D, include_hg), i, lab)
-    with c3:
-        _dl_button(frame, f"CP별_권역편중_{_cp_label(selected)}_{stamp}",
-                   "cp_t2_dl", "권역편중")
     st.markdown(_region_drill_html(D, frame, lab), unsafe_allow_html=True)
-    st.markdown(
-        f'<div class="ov-footnote">시·도 행을 누르면 그 아래 시·군·구가 펼쳐진다. '
-        f'{lab} 내 구성비는 {lab}의 전국 매물 중 그 지역이 차지하는 비율, '
-        '점유율은 그 지역 시장에서의 몫이다.</div>', unsafe_allow_html=True)
 
 
 def _section_listing_mix(D, selected, T, include_hg):
     """매물 유형 구성 — 매물 종류(아파트·오피스텔 등) 구성비. 지역 축과 무관한 '무엇' 질문."""
     i = T["i"]
-    stamp = D["months"][i]
-    # 차트 보기엔 엑셀 버튼이 없어 그 칸(c3)만큼 오른쪽이 비어 보였다 — 표로 보기일 때만
-    # 칸을 셋으로 나누고, 차트 보기는 둘로 합쳐 토글이 진짜 오른쪽 끝까지 붙게 한다.
-    wide = (st.session_state.get("cp_mix_view") or "차트 보기") != "표로 보기"
-    cols = st.columns([1.72, 1.48] if wide else [1.72, 1.0, 0.48])
-    c1, c2 = cols[0], cols[1]
-    c3 = cols[2] if len(cols) > 2 else None
+    c1, c2 = st.columns([1.72, 1.48])
     with c1:
         st.markdown('<div class="ov-panel-title" style="padding-top:9px;">'
                     'CP별 매물 유형 구성 (공동/비공동/비공동비주택)</div>',
@@ -1340,15 +1321,12 @@ def _section_listing_mix(D, selected, T, include_hg):
 
     if view == "차트 보기":
         st.plotly_chart(
-            _stacked100(cps, D["groups"], mat,
+            _stacked100(cps, D["groups"], mat, colors=COMPOSE_PALETTE[:len(D["groups"])],
                         highlight=None if selected == ALL else me),
             use_container_width=True, config={"displayModeBar": False})
         return
 
     axis_names = D["groups"]
-    frame = _attr_frame(cps, mat, tot, axis_names)
-    with c3:
-        _dl_button(frame, f"CP별_매물유형_{stamp}", "cp_mix_dl", "매물유형")
 
     head = "".join(f'<th colspan="3">{n}</th>' for n in axis_names)
     sub = "".join('<th class="dim">건수</th><th>구성비</th><th>점유율</th>'
@@ -1371,14 +1349,10 @@ def _section_listing_mix(D, selected, T, include_hg):
     body += (f'<tr class="me"><td class="region name">시장 전체</td>'
              f'<td>{_num(mkt_base)}</td>{tds}</tr>')
     st.markdown(
-        '<div class="ov-table-scroll"><table class="ov-table"><thead>'
+        '<div class="ov-table-scroll"><table class="ov-table" id="cpmix"><thead>'
         '<tr><th class="region name" rowspan="2">CP</th><th rowspan="2">매물수</th>'
         f'{head}</tr><tr>{sub}</tr></thead><tbody>{body}</tbody></table></div>',
         unsafe_allow_html=True)
-    st.markdown(
-        '<div class="ov-footnote">구성비 = 그 CP 매물이 각 칸에 나뉜 비율(차트와 같은 값) · '
-        '점유율 = 그 칸의 시장에서 그 CP가 차지하는 몫. 매물수는 가산 가능해서 쪼갠 합이 '
-        '총계와 정확히 맞는다.</div>', unsafe_allow_html=True)
 
 
 def _tab_method(D, selected, T, include_hg):
