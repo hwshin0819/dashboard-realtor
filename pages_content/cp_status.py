@@ -51,6 +51,11 @@ PILL_GREEN = "#027A48"    # 세그먼트 버튼 선택 상태 (실거래량 동�
 # PALETTE(검증방식 8색, CVD 검증 완료)와 분리해 톤 다운된 색으로 따로 둔다.
 COMPOSE_PALETTE = ["#4A7BB0", "#E67E22", "#16A085", "#95A5A6"]
 
+# '검증 방식' 탭의 'CP별 매물 검증방식 구성' 차트 전용 팔레트 — 이것도 같은 이유로
+# 원색 PALETTE 대신 톤다운된 색을 쓴다(COMPOSE_PALETTE와 같은 계열, 검증방식 9종까지 확장).
+METHOD_PALETTE = ["#4A7BB0", "#E67E22", "#16A085", "#95A5A6", "#D4AC0D",
+                  "#C2708C", "#2E7D32", "#8E6C88", "#34495E"]
+
 # 검증방식처럼 여러 계열을 한 그림에 쌓을 때 쓰는 순서 고정 팔레트.
 # (dataviz 기준 팔레트 슬롯 1~8 — 인접쌍 CVD ΔE 9.1 / 일반시야 19.6으로 검증 통과.
 #  대비 경고가 있는 슬롯이 있어 '막대 안 숫자 라벨 + 표 병기'를 반드시 함께 쓴다.)
@@ -969,7 +974,8 @@ def _methods_all_chart(D, T, include_hg, region, methods, live):
         "범위", ["전체 방식", "집주인 방식"], default="전체 방식",
         key="cp_methods_scope", label_visibility="collapsed") or "전체 방식"
     cat_focus = set(METHOD_SETS["집주인 방식"]) if scope == "집주인 방식" else None
-    st.plotly_chart(_stacked100(cps, names, mat, cat_focus=cat_focus),
+    st.plotly_chart(_stacked100(cps, names, mat, colors=METHOD_PALETTE[:len(names)],
+                                 cat_focus=cat_focus),
                     use_container_width=True, config={"displayModeBar": False})
 
 
