@@ -166,6 +166,11 @@ _EXTRA_CSS = f"""
 .st-key-cp_root #cpdrill tr.sido td,
 .st-key-cp_root #rgdrill tr.sido td {{ font-weight:600; }}
 
+/* 지역별 검증 방식 표 — 매물수·건수·구성비·점유율은 가운데 정렬(시·도/시·군·구 이름 열은
+   .name이 이미 왼쪽 정렬을 지키므로 제외). */
+.st-key-cp_root #cpdrill th:not(.region):not(.name),
+.st-key-cp_root #cpdrill td:not(.region):not(.name) {{ text-align:center; }}
+
 /* 세그먼트 버튼 — 다른 메뉴(실거래량 동향 '빠른 선택')와 같은 모양으로 통일한다.
    선택된 것만 초록 배경+흰 글자, 나머지는 회색 테두리.
    높이 38px은 옆에 서는 셀렉트박스에 맞춘 값이다(기본 32px이면 밑단이 떠 보인다). */
@@ -922,9 +927,10 @@ def _region_methods_all(D, selected, T, include_hg, focus):
     sidos = D["sidos"]
     idx = [D["methods"].index(p) for p in HEATMAP_METRICS[focus]]
 
-    # 드롭다운·지표·엑셀을 오른쪽에 붙여 한 줄로 둔다. 엑셀 버튼을 따로 그리면
-    # 줄이 하나 더 생기면서 밑으로 떨어진다(예전 _dl_row가 그랬다).
-    head_l, head_m, head_r, head_d = st.columns([0.5, 1.3, 1.1, 0.6])
+    # 제목이 길어져서(검증방식별 지역 히트맵/지도) 한 줄에 드롭다운·지표·엑셀까지 다 넣으면
+    # 잘렸다 — 제목+검증방식 드롭다운을 한 줄, 지표 토글+엑셀 버튼(오른쪽 정렬)을 그 아래
+    # 한 줄로 나눈다. 엑셀 버튼은 여기서 자리만 잡아두고 데이터가 준비된 뒤 채운다.
+    head_l, head_m = st.columns([2.0, 1.0])
     head_l.markdown(
         '<div class="ov-panel-title" style="padding-top:9px;">'
         + ("검증방식별 지역 히트맵" if selected == ALL else "검증방식별 지역 지도") + "</div>",
@@ -933,6 +939,7 @@ def _region_methods_all(D, selected, T, include_hg, focus):
         st.selectbox("검증방식", list(HEATMAP_METRICS), key=HM_KEY,
                      format_func=lambda k: HM_LABEL.get(k, k),
                      label_visibility="collapsed")
+    _, head_r, head_d = st.columns([1.3, 1.1, 0.6])
     with head_r:
         basis = st.segmented_control(
             "보기 지표", ["점유율", "건수", "CP 내 비중"], default="점유율",
@@ -1382,7 +1389,9 @@ def _tab_method(D, selected, T, include_hg):
     opts = cs.region_options(D)
     region = st.session_state.get("cp_region")
     region = region if region in opts else cs.NATION
-    c1, c2, c3 = st.columns([1.72, 1.0, 0.48])
+    # 지역 선택 드롭다운은 옵션이 짧은 이름(전국/수도권/서울 등)뿐이라 넓을 필요가 없다 —
+    # 좁혀서 오른쪽 엑셀 버튼 쪽으로 붙인다.
+    c1, c2, c3 = st.columns([2.24, 0.48, 0.48])
     with c1:
         st.markdown(f'<div class="ov-panel-title" style="padding-top:9px;">'
                     f'지역별 검증 방식 · {region}</div>', unsafe_allow_html=True)
