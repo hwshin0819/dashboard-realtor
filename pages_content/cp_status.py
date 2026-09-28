@@ -91,7 +91,7 @@ MAX_SERIES = 7
 # 지역(어디) 축과 구성(무엇) 축을 탭으로 분리한다 — 기타는 전체 CP 이슈 목록이라
 # 개별 CP를 볼 땐 의미가 없어 그 경우만 목록에서 뺀다(render()에서 동적으로 구성).
 SECTIONS = ["시장 점유율", "지역 현황", "구성 비교"]
-SECTION_ETC = "기타"
+SECTION_ETC = "특이사항"
 
 # 검증방식 묶음 보기 — 범례 오른쪽 끝의 버튼. '집주인 방식'을 누르면 아래 3종만
 # 선명하게 남고 나머지는 범례에서 회색으로 빠진다(개별 범례 클릭으로 다시 켤 수 있다).
@@ -1446,7 +1446,8 @@ def _section_listing_mix(D, selected, T, include_hg):
     stamp = D["months"][i]
     c1, c2, c3 = st.columns([1.72, 1.0, 0.48])
     with c1:
-        st.markdown('<div class="ov-panel-title" style="padding-top:9px;">매물 유형 구성</div>',
+        st.markdown('<div class="ov-panel-title" style="padding-top:9px;">'
+                    'CP별 매물 유형 구성 (공동/비공동/비공동비주택)</div>',
                     unsafe_allow_html=True)
     with c2:
         view = st.segmented_control(
@@ -1540,7 +1541,7 @@ def _tab_compose(D, selected, T, include_hg):
     methods = D["methods"]
     tot_l0 = cs.method_market(D, sel_i, include_hg, cs.NATION)
     live0 = [j for j in range(len(methods)) if tot_l0[j] > 0]
-    st.markdown('<div class="ov-panel-title" style="padding-top:9px;">방식별 시장 점유율 · 전국</div>',
+    st.markdown('<div class="ov-panel-title" style="padding-top:9px;">CP별 매물 검증방식 구성</div>',
                 unsafe_allow_html=True)
     if not live0:
         st.info("이 시점에 검증방식 데이터가 없습니다.")
@@ -1552,7 +1553,7 @@ def _tab_compose(D, selected, T, include_hg):
 
 
 def _tab_etc(D, selected, T, include_hg):
-    """탭4 기타 — CP사별 이슈 현황과 생산성 랭킹, 그리고 데이터 주의사항.
+    """탭4 특이사항 — CP사별 이슈 현황과 생산성 랭킹, 그리고 데이터 주의사항.
     전 CP를 훑는 내용이라 개별 CP를 볼 땐 이 탭 자체를 숨긴다(render() 참고)."""
     _section_issues(D, selected, T, include_hg)
     _rule()
