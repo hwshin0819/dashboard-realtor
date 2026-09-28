@@ -22,10 +22,9 @@ DEFAULT_ADMIN_PW = "changeme123"
 # 값을 바꾸면 기존 계정들의 "pages"도 같이 마이그레이션해야 한다(그래야 allowed_pages()의 교집합이 안 깨짐).
 PAGE_INDUSTRY_TRENDS = "중개업 시장 동향"
 PAGE_TRANSACTIONS = "실거래량 동향"
-PAGE_BROKERS = "공인중개사 현황"
 PAGE_CP_STATUS = "CP 현황"
 PAGE_CALCULATOR = "공헌이익 시뮬레이터"
-ALL_PAGES = [PAGE_INDUSTRY_TRENDS, PAGE_TRANSACTIONS, PAGE_BROKERS, PAGE_CP_STATUS,
+ALL_PAGES = [PAGE_INDUSTRY_TRENDS, PAGE_TRANSACTIONS, PAGE_CP_STATUS,
              PAGE_CALCULATOR]
 
 # 관리자 전용 메뉴. 계정별 권한 제한 대상이 아니라 역할(admin)로만 노출 여부를 결정한다.

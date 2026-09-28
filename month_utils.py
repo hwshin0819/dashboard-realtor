@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
-"""'YYYY-MM' 문자열 기반 월 연산 공용 유틸. 여러 pages_content 모듈(brokers.py, transactions.py 등)에서
-MoM/YoY 계산에 공통으로 쓴다."""
+"""'YYYY-MM' 문자열 기반 월 연산 공용 유틸. collect_transaction_volume.py의
+MoM/YoY 계산에 쓴다."""
 
 
 def shift_month(ym: str, delta: int) -> str:

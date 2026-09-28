@@ -10,21 +10,16 @@ import streamlit.components.v1 as components
 import auth
 import theme
 from pages_content import (
-    brokers,
     cp_status,
     transactions,
     industry_trends,
-    webhooks,
-    targets,
-    collect_test,
-    schedule,
     admin,
     access_log,
     calculator,
 )
 
 st.set_page_config(
-    page_title="이실장 사업팀 대시보드",  # 브라우저 탭 제목 전용. 로그인 화면·좌측 메뉴 표기는 auth.PAGE_BROKERS를 따로 쓴다.
+    page_title="이실장 사업팀 대시보드",  # 브라우저 탭 제목 전용. 로그인 화면·좌측 메뉴 표기는 auth.PAGE_CP_STATUS를 따로 쓴다.
     layout="wide",
 )
 theme.inject()
@@ -125,22 +120,3 @@ elif selected_page == auth.PAGE_INDUSTRY_TRENDS:
     industry_trends.render()
 elif selected_page == auth.PAGE_CP_STATUS:
     cp_status.render()
-elif selected_page == auth.PAGE_BROKERS:
-    st.title(auth.PAGE_BROKERS)
-
-    if auth.is_admin():
-        TAB_NAMES = ["개요", "웹훅 관리", "수집 대상", "수집테스트", "배치 스케줄"]
-        tabs = st.tabs(TAB_NAMES)
-
-        with tabs[0]:
-            brokers.render()
-        with tabs[1]:
-            webhooks.render()
-        with tabs[2]:
-            targets.render()
-        with tabs[3]:
-            collect_test.render()
-        with tabs[4]:
-            schedule.render()
-    else:
-        brokers.render()
