@@ -204,6 +204,48 @@ def jeonse_wolse_summary(start_ym: str, end_ym: str, region_short: str = "전국
 
 
 @st.cache_data(ttl=_CACHE_TTL)
+def jeonse_wolse_summary_for_sidos(start_ym: str, end_ym: str, sido_shorts) -> dict:
+    """jeonse_wolse_summary와 동일하지만, 단일 시/도 대신 시/도 목록(예: 수도권=서울+경기+인천)을
+    합쳐서 조회한다. AI 에이전트가 '수도권'/'지방' 같은 권역 질문에 답할 때 쓴다."""
+    codes = _codes_for_sidos(sido_shorts)
+    conn = db.get_conn()
+    q = (
+        "SELECT count_jeonse, count_wolse, avg_deposit_jeonse, avg_deposit_wolse, avg_rent "
+        "FROM transaction_monthly WHERE trade_type='전월세' AND ym BETWEEN ? AND ?"
+    )
+    params = [start_ym, end_ym]
+    if codes is not None:
+        if not codes:
+            conn.close()
+            return {"전세평균보증금": None, "월세평균보증금": None, "평균월세": None, "전세건수": 0, "월세건수": 0}
+        q += f" AND sigungu_code IN ({','.join('?' for _ in codes)})"
+        params.extend(codes)
+    rows = conn.execute(q, params).fetchall()
+    conn.close()
+
+    jeonse_n = jeonse_sum = 0
+    wolse_n = wolse_deposit_sum = wolse_rent_sum = 0
+    for r in rows:
+        cj, cw = r["count_jeonse"] or 0, r["count_wolse"] or 0
+        if cj and r["avg_deposit_jeonse"] is not None:
+            jeonse_sum += r["avg_deposit_jeonse"] * cj
+            jeonse_n += cj
+        if cw and r["avg_deposit_wolse"] is not None:
+            wolse_deposit_sum += r["avg_deposit_wolse"] * cw
+            wolse_n += cw
+        if cw and r["avg_rent"] is not None:
+            wolse_rent_sum += r["avg_rent"] * cw
+
+    return {
+        "전세평균보증금": round(jeonse_sum / jeonse_n) if jeonse_n else None,
+        "월세평균보증금": round(wolse_deposit_sum / wolse_n) if wolse_n else None,
+        "평균월세": round(wolse_rent_sum / wolse_n) if wolse_n else None,
+        "전세건수": jeonse_n,
+        "월세건수": wolse_n,
+    }
+
+
+@st.cache_data(ttl=_CACHE_TTL)
 def load_jeonse_wolse_monthly_series(region_short: str = "전국", property_type: str = "전체") -> list:
     """월별 [전세(신규)건수, 전세(갱신청구권)건수, 월세건수] 시계열 (월 오름차순).
     거래량 추이 그래프에서 '전월세' 막대를 전세/월세로, 전세는 다시 신규/갱신으로 더 쪼개 보여줄 때 쓴다."""

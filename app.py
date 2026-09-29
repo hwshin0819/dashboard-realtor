@@ -21,6 +21,7 @@ from pages_content import (
     admin,
     access_log,
     calculator,
+    ai_agent,
 )
 
 st.set_page_config(
@@ -125,6 +126,8 @@ elif selected_page == auth.PAGE_INDUSTRY_TRENDS:
     industry_trends.render()
 elif selected_page == auth.PAGE_CP_STATUS:
     cp_status.render()
+elif selected_page == auth.PAGE_AI_AGENT:
+    ai_agent.render()
 elif selected_page == auth.PAGE_BROKERS:
     st.title(auth.PAGE_BROKERS)
 

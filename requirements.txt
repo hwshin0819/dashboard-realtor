@@ -14,3 +14,4 @@ python-dotenv>=1.0
 xmltodict>=0.14
 beautifulsoup4>=4.13
 psycopg2-binary>=2.9
+google-genai>=1.0

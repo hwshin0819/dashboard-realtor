@@ -25,8 +25,9 @@ PAGE_TRANSACTIONS = "실거래량 동향"
 PAGE_BROKERS = "공인중개사 현황"
 PAGE_CP_STATUS = "CP 현황"
 PAGE_CALCULATOR = "공헌이익 시뮬레이터"
+PAGE_AI_AGENT = "AI 에이전트"
 ALL_PAGES = [PAGE_INDUSTRY_TRENDS, PAGE_TRANSACTIONS, PAGE_BROKERS, PAGE_CP_STATUS,
-             PAGE_CALCULATOR]
+             PAGE_CALCULATOR, PAGE_AI_AGENT]
 
 # 관리자 전용 메뉴. 계정별 권한 제한 대상이 아니라 역할(admin)로만 노출 여부를 결정한다.
 PAGE_ADMIN = "관리자 계정 관리"
