@@ -9,6 +9,7 @@ import streamlit.components.v1 as components
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, PatternFill
 
+import excel_export
 import real_stats
 import region_utils as ru
 from theme import CARD, GREEN, GREEN_DEEP, INK, LINE, MUTED, ROW_HOVER, TABLE_LINE, VERMILION, ACCENT_SOFT, BLUE
@@ -272,6 +273,18 @@ def _render_detail_table(
         st.markdown(_build_table_html(df, regions, months_desc), unsafe_allow_html=True)
 
 
+@st.cache_data(ttl=900, show_spinner=False)
+def _daily_backup_bytes():
+    """일별 개업/폐업/영업중 백업(지역별_일별_통계 형식)을 DB에서 전일자(KST) 기준으로 새로
+    만든다. 원래 로컬 PC에서 collector가 돌 때마다 엑셀 파일에 누적해 두던 걸(excel_export.py,
+    backup.py) 그대로 재현하되, Streamlit Cloud엔 그 로컬 파일이 없으니 DB(daily_region_stats)에서
+    매번 새로 만든다. 15분 캐시라 페이지의 다른 위젯을 조작해도 매번 다시 굽지 않는다."""
+    wb, last_date = excel_export.build_backup_workbook()
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue(), last_date
+
+
 @st.cache_data
 def _matrix_to_excel_bytes(df: pd.DataFrame, regions: list, months_desc: list) -> bytes:
     """지역(행) x 월(열, 개업/폐업/순증감/영업중) 형태 엑셀. 순증감 셀은 양/음에 따라 배경색을 넣는다.
@@ -355,12 +368,25 @@ def render():
 
     with st.container(key="brokers_root"):
         st.markdown(_FILTER_CSS, unsafe_allow_html=True)
-        st.markdown(
-            f'<div class="ov-topline">'
-            f'<div class="sub">스냅샷 기준 {snapshot_date or latest_month}</div>'
-            f"</div>",
-            unsafe_allow_html=True,
-        )
+        top_l, top_r = st.columns([3, 1])
+        with top_l:
+            st.markdown(
+                f'<div class="ov-topline">'
+                f'<div class="sub">스냅샷 기준 {snapshot_date or latest_month}</div>'
+                f"</div>",
+                unsafe_allow_html=True,
+            )
+        with top_r:
+            backup_bytes, backup_date = _daily_backup_bytes()
+            st.download_button(
+                "⬇ 일별 백업 다운로드",
+                data=backup_bytes,
+                file_name=f"지역별_일별_통계_{backup_date or 'na'}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                key="dl_daily_backup",
+                help=f"{backup_date or '–'} 기준(전일자) 지역별 개업·폐업·영업중 일별 통계 전체",
+                use_container_width=True,
+            )
 
         # ---- 공통 필터 상태 기본값 (KPI 카드가 필터보다 먼저 그려지므로 위젯 만들기 전에 session_state부터 채운다) ----
         st.session_state.setdefault("br_region", regions_short[0])
