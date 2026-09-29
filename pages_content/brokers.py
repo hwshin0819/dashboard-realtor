@@ -272,8 +272,14 @@ def _render_detail_table(
         st.markdown(_build_table_html(df, regions, months_desc), unsafe_allow_html=True)
 
 
+@st.cache_data
 def _matrix_to_excel_bytes(df: pd.DataFrame, regions: list, months_desc: list) -> bytes:
-    """지역(행) x 월(열, 개업/폐업/순증감/영업중) 형태 엑셀. 순증감 셀은 양/음에 따라 배경색을 넣는다."""
+    """지역(행) x 월(열, 개업/폐업/순증감/영업중) 형태 엑셀. 순증감 셀은 양/음에 따라 배경색을 넣는다.
+
+    cell 단위 openpyxl 스타일링이라 '전국 + 전체기간'(시도 18개 x 월 81개) 기준 1초 넘게 걸리는데,
+    download_button은 매 rerun마다 data= 인자를 다시 계산해야 하고 st.tabs()는 안 보이는 탭도
+    코드가 그대로 실행돼서, 캐시가 없으면 이 표와 무관한 다른 위젯을 조작할 때도 매번 이 비용을
+    치른다. 캐시하면 실제로 지역/기간 선택이 바뀔 때만 다시 계산한다."""
     wb = Workbook()
     ws = wb.active
     ws.title = "지역별_상세"
