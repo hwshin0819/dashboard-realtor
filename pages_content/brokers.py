@@ -353,6 +353,32 @@ def _matrix_to_excel_bytes(df: pd.DataFrame, regions: list, months_desc: list) -
     return buf.getvalue()
 
 
+@st.dialog("엑셀 다운로드")
+def _export_dialog(monthly_bytes: bytes, start_month: str, end_month: str):
+    """'지역별 상세' 엑셀 버튼 하나로 월별(지금 화면의 지역·기간 매트릭스)과 일별
+    (전일자 기준 전체 백업, 원래 로컬 collector가 쌓던 지역별_일별_통계.xlsx) 중
+    골라 받게 한다 — 형식이 완전히 달라 버튼 하나로 합칠 수 없어 팝업으로 고르게 했다."""
+    fmt = st.radio("형식", ["월별 (지금 선택한 지역·기간)", "일별 (전일자 기준 전체)"],
+                   key="br_export_fmt", label_visibility="collapsed")
+    if fmt.startswith("월별"):
+        st.download_button(
+            "⬇ 월별 엑셀 다운로드", data=monthly_bytes,
+            file_name=f"지역별_상세매트릭스_{start_month}_{end_month}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            key="dl_matrix_monthly", use_container_width=True,
+        )
+    else:
+        backup_bytes, backup_date = _daily_backup_bytes()
+        st.download_button(
+            "⬇ 일별 엑셀 다운로드", data=backup_bytes,
+            file_name=f"지역별_일별_통계_{backup_date or 'na'}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            key="dl_matrix_daily",
+            help=f"{backup_date or '–'} 기준(전일자) 지역별 개업·폐업·영업중 일별 통계 전체",
+            use_container_width=True,
+        )
+
+
 def render():
     rows = real_stats.load_region_monthly_stats()
     if not rows:
@@ -368,25 +394,12 @@ def render():
 
     with st.container(key="brokers_root"):
         st.markdown(_FILTER_CSS, unsafe_allow_html=True)
-        top_l, top_r = st.columns([3, 1])
-        with top_l:
-            st.markdown(
-                f'<div class="ov-topline">'
-                f'<div class="sub">스냅샷 기준 {snapshot_date or latest_month}</div>'
-                f"</div>",
-                unsafe_allow_html=True,
-            )
-        with top_r:
-            backup_bytes, backup_date = _daily_backup_bytes()
-            st.download_button(
-                "⬇ 일별 백업 다운로드",
-                data=backup_bytes,
-                file_name=f"지역별_일별_통계_{backup_date or 'na'}.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                key="dl_daily_backup",
-                help=f"{backup_date or '–'} 기준(전일자) 지역별 개업·폐업·영업중 일별 통계 전체",
-                use_container_width=True,
-            )
+        st.markdown(
+            f'<div class="ov-topline">'
+            f'<div class="sub">스냅샷 기준 {snapshot_date or latest_month}</div>'
+            f"</div>",
+            unsafe_allow_html=True,
+        )
 
         # ---- 공통 필터 상태 기본값 (KPI 카드가 필터보다 먼저 그려지므로 위젯 만들기 전에 session_state부터 채운다) ----
         st.session_state.setdefault("br_region", regions_short[0])
@@ -506,14 +519,8 @@ def render():
                 df_matrix, table_regions = _resolve_table_scope(table_region_short, table_df, regions_full, period_months)
                 excel_bytes = _matrix_to_excel_bytes(df_matrix, table_regions, months_desc)
                 h3, hr = h_actions.columns([0.78, 0.22])
-                h3.download_button(
-                    "⬇ 엑셀 다운로드",
-                    data=excel_bytes,
-                    file_name=f"지역별_상세매트릭스_{start_month}_{end_month}.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    key="dl_matrix",
-                    use_container_width=True,
-                )
+                if h3.button("⬇ 엑셀 다운로드", key="dl_matrix_open", use_container_width=True):
+                    _export_dialog(excel_bytes, start_month, end_month)
                 hr.button("↺", key="reset_matrix_region", on_click=_reset_table_region, help="전국으로 되돌리기", use_container_width=True)
                 st.caption("※ 순증감 셀은 양수면 초록, 음수면 빨강 배경으로 표시됩니다. 시군구·영업중(Live) 데이터는 2026-09월부터 제공됩니다.")
                 _render_detail_table(table_region_short, table_df, regions_full, regions_short, period_months, months_desc)
