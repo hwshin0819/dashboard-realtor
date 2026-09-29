@@ -101,6 +101,8 @@ MAX_SERIES = 7
 # 지역(어디) 축과 구성(무엇) 축을 탭으로 분리한다 — 기타는 전체 CP 이슈 목록이라
 # 개별 CP를 볼 땐 의미가 없어 그 경우만 목록에서 뺀다(render()에서 동적으로 구성).
 SECTIONS = ["시장 점유율", "검증 방식", "구성 비교"]
+SECTION_REPORT = "월간 리포트"     # 전체 모드 전용 — 예전 엑셀 월간 리포트 형식 재현
+SECTION_PROFILE = "월별 추이"      # 개별 CP 전용 — 점유율·구성비를 월별로 쭉 늘어놓는 탭
 SECTION_ETC = "특이사항"
 
 # 검증방식 묶음 — CP별 매물 검증방식 구성 차트 위 '전체 방식/집주인 방식' 토글과
@@ -506,6 +508,58 @@ def _stacked100(rows, cats, matrix, colors=None, *, height=None, highlight=None,
     fig.update_layout(hovermode="closest",
                       legend=dict(orientation="h", yanchor="bottom", y=1.0, x=0,
                                   traceorder="normal", font=dict(size=10)))
+    return fig
+
+
+def _pct_series(rows, names):
+    """rows[월] = [항목값, ...] (길이 len(names), 개별 값은 None 가능하나 행 자체는 None이 아니어야
+    한다 — 호출부가 D["d"][cp]["gl"][i] 같은 원본을 넘길 땐 `row or [0]*len(names)`로 감싼다).
+    월별로 100%로 정규화해 (이름, [월수]비율) 목록으로 만든다 — '월별 추이' 탭의 라인차트용."""
+    out = {n: [] for n in names}
+    for row in rows:
+        tot = sum(cs.nz(v) for v in row)
+        for j, n in enumerate(names):
+            v = row[j]
+            out[n].append((cs.nz(v) / tot * 100) if tot else None)
+    return [(n, out[n]) for n in names]
+
+
+def _trend_chart(labels, series, colors, *, pct=True, height=260):
+    """월별 다계열 라인차트. series=[(이름,[월수]값), ...], colors는 같은 순서로 매칭.
+    pct=True면 %(0~100 근처) 단위, False면 건수 등 원래 단위 그대로 그린다."""
+    fig = go.Figure()
+    for (name, vals), color in zip(series, colors):
+        fig.add_trace(go.Scatter(
+            x=labels, y=vals, name=name, mode="lines+markers",
+            line=dict(color=color, width=2), marker=dict(size=5), connectgaps=False,
+            hovertemplate="%{x} · " + name + (" %{y:.1f}%" if pct else " %{y:,.0f}") + "<extra></extra>",
+        ))
+    yaxis = dict(gridcolor=LINE, rangemode="tozero")
+    if pct:
+        yaxis["ticksuffix"] = "%"
+    else:
+        yaxis["tickformat"] = ","
+    fig.update_layout(yaxis=yaxis, xaxis=dict(gridcolor=LINE))
+    _base_layout(fig, height=height)
+    return fig
+
+
+def _market_trend_chart(labels, l_vals, m_vals, *, height=340):
+    """전체 시장 매물수(막대)·회원수(선) 월별 추이 — 이중 축(매물수는 왼쪽, 회원수는 오른쪽)."""
+    fig = go.Figure()
+    fig.add_bar(x=labels, y=l_vals, name="매물수", marker_color=COMPOSE_PALETTE[0], yaxis="y")
+    fig.add_trace(go.Scatter(
+        x=labels, y=m_vals, name="회원수", mode="lines+markers",
+        line=dict(color=COMPOSE_PALETTE[1], width=2), marker=dict(size=5), yaxis="y2",
+        hovertemplate="%{x} · 회원수 %{y:,.0f}<extra></extra>",
+    ))
+    fig.update_layout(
+        yaxis=dict(title="매물수", gridcolor=LINE, rangemode="tozero", tickformat=","),
+        yaxis2=dict(title="회원수", overlaying="y", side="right", showgrid=False,
+                    rangemode="tozero", tickformat=","),
+        xaxis=dict(gridcolor=LINE),
+    )
+    _base_layout(fig, height=height)
     return fig
 
 
@@ -1429,6 +1483,162 @@ def _tab_etc(D, selected, T, include_hg):
         _section_notes(D)
 
 
+# ── 탭 '월간 리포트' (전체 모드 전용) ──────────────────────────────────────────
+# 예전에 엑셀로 만들던 월간 리포트(네이버 전체 요약 + CP사별 추이)를 대시보드 안에 재현한다.
+
+def _compare_table_html(rows, prev_lab, cur_lab, *, dec=0):
+    """rows=[(라벨, 이전값, 현재값), ...]. '구분/이전/현재/증감률' 4열 표를 만든다."""
+    body = "".join(
+        f'<tr><td class="region name">{lab}</td>'
+        f'<td class="dim">{_num(prev, dec)}</td>'
+        f'<td>{_num(cur, dec)}</td>'
+        f'<td>{_signed(_growth(cur, prev))}</td></tr>'
+        for lab, prev, cur in rows
+    )
+    return (
+        '<div class="ov-table-scroll"><table class="ov-table"><thead><tr>'
+        f'<th class="region name">구분</th><th>{prev_lab}</th><th>{cur_lab}</th><th>증감률</th>'
+        f'</tr></thead><tbody>{body}</tbody></table></div>'
+    )
+
+
+def _section_naver_all(D, T, include_hg):
+    """네이버부동산 전체(시장 합계) 현황 — 전월 대비 당월 비교 + 전체 기간 추이."""
+    sel_i, ci = T["i"], T["cmp"]
+    cur_lab = D["labels"][sel_i]
+    prev_lab = D["labels"][ci] if ci is not None else "–"
+
+    st.markdown('<div class="ov-panel-title">네이버부동산 매물/회원 현황 (전체)</div>',
+                unsafe_allow_html=True)
+    tl, tm = cs.market(D, "l", sel_i, include_hg), cs.market(D, "m", sel_i, include_hg)
+    ptl = cs.market(D, "l", ci, include_hg) if ci is not None else None
+    ptm = cs.market(D, "m", ci, include_hg) if ci is not None else None
+    st.markdown(
+        _compare_table_html([("매물수", ptl, tl), ("회원수", ptm, tm)], prev_lab, cur_lab),
+        unsafe_allow_html=True)
+
+    zn, gr = D["zones"], D["groups"]
+    zvals = cs.market_vec(D, "zl", sel_i, include_hg, len(zn))
+    pzvals = cs.market_vec(D, "zl", ci, include_hg, len(zn)) if ci is not None else [None] * len(zn)
+    gvals = cs.market_vec(D, "gl", sel_i, include_hg, len(gr))
+    pgvals = cs.market_vec(D, "gl", ci, include_hg, len(gr)) if ci is not None else [None] * len(gr)
+
+    c1, c2 = st.columns(2)
+    with c1:
+        st.markdown('<div class="ov-panel-title" style="padding-top:9px;">수도권 / 지방 (매물수)</div>',
+                    unsafe_allow_html=True)
+        st.markdown(_compare_table_html(list(zip(zn, pzvals, zvals)), prev_lab, cur_lab),
+                    unsafe_allow_html=True)
+    with c2:
+        st.markdown('<div class="ov-panel-title" style="padding-top:9px;">매물유형별 (매물수)</div>',
+                    unsafe_allow_html=True)
+        st.markdown(_compare_table_html(list(zip(gr, pgvals, gvals)), prev_lab, cur_lab),
+                    unsafe_allow_html=True)
+
+    st.markdown('<div class="ov-panel-title" style="padding-top:14px;">전체 시장 추이 (매물수·회원수)</div>',
+                unsafe_allow_html=True)
+    l_all = [cs.market(D, "l", i, include_hg) for i in range(D["nm"])]
+    m_all = [cs.market(D, "m", i, include_hg) for i in range(D["nm"])]
+    st.plotly_chart(_market_trend_chart(D["labels"], l_all, m_all),
+                    use_container_width=True, config={"displayModeBar": False})
+
+
+def _section_cp_trend(D, include_hg):
+    """CP사별 매물수·회원수 월별 추이 — 상위 MAX_SERIES개사는 선으로, 나머지는 '기타'로 합산.
+    회사가 21개라 전부 선으로 그리면 색이 겹쳐 못 읽는다(_all_colors와 같은 상한 정책)."""
+    st.markdown('<div class="ov-panel-title">CP사별 월별 추이</div>', unsafe_allow_html=True)
+    colors, top, rest = _all_colors(D, D["nm"] - 1, include_hg)
+    labels = D["labels"]
+    line_colors = [colors[c] for c in top] + ([COLOR_ETC] if rest else [])
+
+    def series_for(key):
+        s = [(c, D["d"][c][key]) for c in top]
+        if rest:
+            etc = [sum(cs.nz(D["d"][c][key][i]) for c in rest) for i in range(D["nm"])]
+            s.append(("기타", etc))
+        return s
+
+    st.markdown('<div class="ov-panel-title" style="padding-top:9px; font-size:.9rem;">매물수 기준</div>',
+                unsafe_allow_html=True)
+    st.plotly_chart(_trend_chart(labels, series_for("l"), line_colors, pct=False, height=320),
+                    use_container_width=True, config={"displayModeBar": False})
+    st.markdown('<div class="ov-panel-title" style="padding-top:14px; font-size:.9rem;">회원수 기준</div>',
+                unsafe_allow_html=True)
+    st.plotly_chart(_trend_chart(labels, series_for("m"), line_colors, pct=False, height=320),
+                    use_container_width=True, config={"displayModeBar": False})
+
+
+def _tab_report(D, T, include_hg):
+    """탭 '월간 리포트' — 전체 모드 전용."""
+    _section_naver_all(D, T, include_hg)
+    _rule()
+    _section_cp_trend(D, include_hg)
+
+
+# ── 탭 '월별 추이' (개별 CP 전용) ──────────────────────────────────────────────
+# 지금까지 이 페이지는 한 시점(또는 2점 비교)만 보여줬는데, 여기서는 반대로 전체
+# 기간을 쭉 늘어놓고 지표별 흐름만 본다 — 그래서 상단 시점/기간 선택(T)은 안 쓰고
+# 늘 D 전체 월을 그린다. 한공협 포함 토글만 그대로 따른다(점유율 분모에 영향을 주므로).
+
+def _section_cp_share_trend(D, selected, include_hg):
+    labels = D["labels"]
+    st.markdown('<div class="ov-panel-title">매물 점유율 (월별)</div>', unsafe_allow_html=True)
+    ls = cs.share_series(D, selected, "l", include_hg)
+    st.plotly_chart(
+        _trend_chart(labels, [("매물점유율", ls)], [COMPOSE_PALETTE[0]], pct=True, height=240),
+        use_container_width=True, config={"displayModeBar": False})
+
+    st.markdown('<div class="ov-panel-title" style="padding-top:14px;">회원 점유율 (월별)</div>',
+                unsafe_allow_html=True)
+    ms = cs.share_series(D, selected, "m", include_hg)
+    st.plotly_chart(
+        _trend_chart(labels, [("회원점유율", ms)], [COMPOSE_PALETTE[1]], pct=True, height=240),
+        use_container_width=True, config={"displayModeBar": False})
+
+
+def _section_cp_compose_trend(D, selected):
+    """매물유형·권역·검증방식 구성비를 월별로. 점유율과 달리 시장 전체가 아니라 이 CP
+    '자기 매물 안에서'의 비중이라 한공협 포함 토글과는 무관하다."""
+    labels = D["labels"]
+    d = D["d"][selected]
+
+    st.markdown('<div class="ov-panel-title">매물유형 구성비 (월별)</div>', unsafe_allow_html=True)
+    gl_rows = [row or [0] * len(D["groups"]) for row in d["gl"]]
+    st.plotly_chart(
+        _trend_chart(labels, _pct_series(gl_rows, D["groups"]),
+                    COMPOSE_PALETTE[:len(D["groups"])], pct=True, height=260),
+        use_container_width=True, config={"displayModeBar": False})
+
+    st.markdown('<div class="ov-panel-title" style="padding-top:14px;">권역 구성비 (월별)</div>',
+                unsafe_allow_html=True)
+    zl_rows = [row or [0] * len(D["zones"]) for row in d["zl"]]
+    st.plotly_chart(
+        _trend_chart(labels, _pct_series(zl_rows, D["zones"]),
+                    COMPOSE_PALETTE[:len(D["zones"])], pct=True, height=220),
+        use_container_width=True, config={"displayModeBar": False})
+
+    st.markdown('<div class="ov-panel-title" style="padding-top:14px;">검증방식 구성비 (월별)</div>',
+                unsafe_allow_html=True)
+    vl_rows = [cs.method_vec(D, selected, i, cs.NATION) for i in range(D["nm"])]
+    active_idx = [j for j in range(len(D["methods"])) if any(cs.nz(row[j]) for row in vl_rows)]
+    if not active_idx:
+        st.info("이 CP는 검증방식 데이터가 없습니다.")
+        return
+    names = [D["methods"][j] for j in active_idx]
+    sub_rows = [[row[j] for j in active_idx] for row in vl_rows]
+    colors = [METHOD_PALETTE[j] for j in active_idx]
+    st.plotly_chart(
+        _trend_chart(labels, _pct_series(sub_rows, names), colors, pct=True, height=280),
+        use_container_width=True, config={"displayModeBar": False})
+
+
+def _tab_profile(D, selected, include_hg):
+    """탭 '월별 추이' — 개별 CP 전용."""
+    _section_cp_share_trend(D, selected, include_hg)
+    _rule()
+    _section_cp_compose_trend(D, selected)
+
+
 def _kpi_all(D, T, include_hg):
     """전체 모드 KPI — 자사가 없으니 점유율 대신 시장 규모와 집중도를 본다."""
     i, ci = T["i"], T["cmp"]
@@ -1609,7 +1819,8 @@ def render():
         # 다른 메뉴(중개업 시장 동향·공인중개사 현황)와 같은 탭 UI.
         # st.tabs는 숨은 탭 내용까지 전부 렌더하지만 서버측 40ms 수준이라 체감 차이가 없다.
         # 시장 점유율·특이사항은 전체 모드 전용이라 개별 CP를 볼 땐 둘 다 뺀다.
-        names = (SECTIONS + [SECTION_ETC]) if selected == ALL else SECTIONS[1:]
+        names = ((SECTIONS + [SECTION_REPORT, SECTION_ETC]) if selected == ALL
+                  else [SECTION_PROFILE] + SECTIONS[1:])
         tabs = st.tabs(names)
 
         if selected == ALL:
@@ -1620,9 +1831,13 @@ def render():
             with tabs[2]:
                 _tab_compose(D, selected, T, include_hg)
             with tabs[3]:
+                _tab_report(D, T, include_hg)
+            with tabs[4]:
                 _tab_etc(D, selected, T, include_hg)
         else:
             with tabs[0]:
-                _tab_method(D, selected, T, include_hg)
+                _tab_profile(D, selected, include_hg)
             with tabs[1]:
+                _tab_method(D, selected, T, include_hg)
+            with tabs[2]:
                 _tab_compose(D, selected, T, include_hg)
