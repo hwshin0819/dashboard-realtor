@@ -1810,8 +1810,10 @@ def render():
         with c2:
             if mode == "기간":
                 rng = st.select_slider(
-                    "기간", options=D["labels"],
-                    value=(D["labels"][0], D["labels"][-1]), key="cp_range")
+                    "구간(시작→끝 비교)", options=D["labels"],
+                    value=(D["labels"][0], D["labels"][-1]), key="cp_range",
+                    help="두 지점(시작·끝)만 비교합니다 — 회원수·매물수는 그 시점의 스냅샷이라 "
+                         "사이 여러 달을 더하는 합계 개념이 아닙니다.")
                 month_lab = None
             else:
                 rng = None
