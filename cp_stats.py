@@ -72,6 +72,10 @@ HANGONG = "한공협"
 PROPTIER = "프롭티어"
 PROPTIER_PARTS = ["이실장", "매경"]
 
+# CP사 표기 교정 — 원자료(CP변환2)에 남아있는 옛 이름/오기를 실제 이름으로 바꾼다.
+# load()에서 한 번만 적용하면 드롭다운·표·차트·ai_tools까지 전부 일관되게 바뀐다.
+CP_NAME_FIXUP = {"파인": "포스"}
+
 # 연월구분 -> 화면 라벨. 2026-08이 없어서 2026-09를 '8월'로 붙이고 수집일을 함께 표기한다(함정 6).
 MONTH_LABEL = {
     "2026-01": "1월", "2026-02": "2월", "2026-03": "3월", "2026-04": "4월",
@@ -134,6 +138,7 @@ def load(version: str) -> dict:
     # 함정 11: CP변환2에 int 114가 섞여 있다. 문자열 축은 전부 astype(str)로 고정.
     for c in ["CP변환2", "매물그룹", "연월구분", "시도", "구시군", "권역구분"]:
         df[c] = df[c].astype(str)
+    df["CP변환2"] = df["CP변환2"].replace(CP_NAME_FIXUP)
     df["div_date"] = df["div_date"].astype(str).str.slice(0, 10)
 
     # 함정 1·2: 총계/상세 분리는 오직 매물그룹으로 한다.
