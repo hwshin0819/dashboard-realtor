@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
-"""AI 에이전트 — 자연어 질문을 Gemini function-calling으로 실거래량 동향 데이터 조회로
-바꿔 답한다. 1차 버전 범위는 ai_tools.py에 등록된 도구(매매/전세/월세 거래량)뿐이다."""
+"""AI 에이전트 — 자연어 질문을 Gemini function-calling으로 데이터 조회로 바꿔 답한다.
+범위는 ai_tools.py에 등록된 도구(실거래량 동향/CP 현황/공인중개사 개폐업 현황/중개업 시장 동향)뿐이다."""
 import os
 import time
 
@@ -36,15 +36,24 @@ def _system_instruction() -> str:
         confirmed = all_months[-2] if len(all_months) > 1 else all_months[-1]
         span = f"{all_months[0]}~{all_months[-1]}"
     return (
-        "너는 부동산 실거래가 대시보드의 데이터 조회 비서다. 제공된 도구(함수)를 호출해서 "
-        "얻은 숫자로만 답하고, 도구 결과에 없는 내용은 추측하지 마라. 도구로 답할 수 없는 "
-        "질문(예: 개발 호재, 시세 전망, 이 대시보드가 다루지 않는 CP사·개폐업 통계)이면 "
-        "모른다고 명확히 말해라. 답은 간결한 한국어로.\n"
-        f"데이터가 확정된(잠정치 아닌) 마지막 월은 {confirmed}이고, 데이터가 존재하는 "
-        f"전체 범위는 {span}이다. '이번 달'/'최근 3개월'/'올해' 같은 상대적 시점은 이 확정월을 "
-        "기준으로 계산해서 도구의 start_month/end_month(YYYY-MM)를 채워라.\n"
-        f"지역은 {ai_tools.VALID_REGIONS} 중에서만, 매물 유형은 {ai_tools.PROPERTY_TYPES} 중에서만, "
-        f"거래 유형은 {ai_tools.TRADE_TYPES} 중에서만 골라 호출해라."
+        "너는 부동산 중개업 대시보드의 데이터 조회 비서다. 제공된 도구(함수)를 호출해서 얻은 "
+        "숫자로만 답하고, 도구 결과에 없는 내용은 추측하지 마라. 도구로 답할 수 없는 질문(예: "
+        "개발 호재, 시세 전망)이면 모른다고 명확히 말해라. 답은 간결한 한국어로.\n"
+        "다룰 수 있는 도메인은 4가지다. (1) 실거래량 동향(매매/전세/월세): get_transaction_trend, "
+        "get_jeonse_wolse_summary. (2) CP 현황(경쟁사 매물 검증방식·점유율·구성비교): "
+        "get_cp_method_mix, get_cp_market_share, get_cp_composition_breakdown — 이 도메인은 CP사 "
+        "이름이 매달 바뀔 수 있어 고정 목록이 없으니, 정확한 CP사명이나 사용 가능한 월을 모르면 "
+        "반드시 list_cp_reference_data를 먼저 호출해서 확인한 뒤 다른 CP 도구를 불러라. "
+        "(3) 공인중개사 개폐업 현황: get_office_open_close_stats, get_district_open_close_ranking, "
+        "get_current_office_status_snapshot. (4) 중개업 시장 동향(시장 규모·지역별 매출·종사자 "
+        "인구통계): get_industry_national_trend, get_industry_tam_estimate, get_tasis_snapshot, "
+        "get_tasis_trend, get_industry_demographics_trend.\n"
+        f"실거래량 동향에서 데이터가 확정된(잠정치 아닌) 마지막 월은 {confirmed}이고, 데이터가 "
+        f"존재하는 전체 범위는 {span}이다. '이번 달'/'최근 3개월'/'올해' 같은 상대적 시점은 이 "
+        "확정월을 기준으로 계산해서 도구의 start_month/end_month(YYYY-MM)를 채워라. 다른 도메인은 "
+        "각 도구가 돌려주는 값 범위를 그대로 따르면 된다.\n"
+        f"실거래량 동향에서 지역은 {ai_tools.VALID_REGIONS} 중에서만, 매물 유형은 "
+        f"{ai_tools.PROPERTY_TYPES} 중에서만, 거래 유형은 {ai_tools.TRADE_TYPES} 중에서만 골라 호출해라."
     )
 
 
@@ -79,7 +88,7 @@ def _format_calls(calls: list) -> str:
 
 def render():
     st.title(auth.PAGE_AI_AGENT)
-    st.caption("실거래량 동향(매매·전세·월세) 데이터에 대해 자연어로 물어보세요.")
+    st.caption("실거래량 동향·CP 현황·공인중개사 개폐업 현황·중개업 시장 동향 데이터에 대해 자연어로 물어보세요.")
 
     client = _client()
     if client is None:
