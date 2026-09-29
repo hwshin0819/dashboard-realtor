@@ -495,8 +495,8 @@ def render():
         if start_month > end_month:
             start_month, end_month = end_month, start_month
 
-        # ---- 탭 2개: 그래프 추이 / 지역별 상세 ----
-        tab1, tab2 = st.tabs(["그래프 추이", "지역별 상세"])
+        # ---- 탭 2개: 지역별 상세 / 그래프 추이 ----
+        tab2, tab1 = st.tabs(["지역별 상세", "그래프 추이"])
 
         with tab1:
             with st.container(border=True):
