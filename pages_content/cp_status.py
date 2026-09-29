@@ -1626,7 +1626,21 @@ def _section_cp_compose_trend(D, selected):
     labels = D["labels"]
     d = D["d"][selected]
 
-    st.markdown('<div class="ov-panel-title">매물유형 구성비 (월별)</div>', unsafe_allow_html=True)
+    st.markdown('<div class="ov-panel-title">검증방식 구성비 (월별)</div>', unsafe_allow_html=True)
+    vl_rows = [cs.method_vec(D, selected, i, cs.NATION) for i in range(D["nm"])]
+    active_idx = [j for j in range(len(D["methods"])) if any(cs.nz(row[j]) for row in vl_rows)]
+    if not active_idx:
+        st.info("이 CP는 검증방식 데이터가 없습니다.")
+    else:
+        names = [D["methods"][j] for j in active_idx]
+        sub_rows = [[row[j] for j in active_idx] for row in vl_rows]
+        colors = [METHOD_PALETTE[j] for j in active_idx]
+        st.plotly_chart(
+            _trend_chart(labels, _pct_series(sub_rows, names), colors, pct=True, height=280),
+            use_container_width=True, config={"displayModeBar": False})
+
+    st.markdown('<div class="ov-panel-title" style="padding-top:14px;">매물유형 구성비 (월별)</div>',
+                unsafe_allow_html=True)
     gl_rows = [row or [0] * len(D["groups"]) for row in d["gl"]]
     st.plotly_chart(
         _trend_chart(labels, _pct_series(gl_rows, D["groups"]),
@@ -1639,20 +1653,6 @@ def _section_cp_compose_trend(D, selected):
     st.plotly_chart(
         _trend_chart(labels, _pct_series(zl_rows, D["zones"]),
                     COMPOSE_PALETTE[:len(D["zones"])], pct=True, height=220),
-        use_container_width=True, config={"displayModeBar": False})
-
-    st.markdown('<div class="ov-panel-title" style="padding-top:14px;">검증방식 구성비 (월별)</div>',
-                unsafe_allow_html=True)
-    vl_rows = [cs.method_vec(D, selected, i, cs.NATION) for i in range(D["nm"])]
-    active_idx = [j for j in range(len(D["methods"])) if any(cs.nz(row[j]) for row in vl_rows)]
-    if not active_idx:
-        st.info("이 CP는 검증방식 데이터가 없습니다.")
-        return
-    names = [D["methods"][j] for j in active_idx]
-    sub_rows = [[row[j] for j in active_idx] for row in vl_rows]
-    colors = [METHOD_PALETTE[j] for j in active_idx]
-    st.plotly_chart(
-        _trend_chart(labels, _pct_series(sub_rows, names), colors, pct=True, height=280),
         use_container_width=True, config={"displayModeBar": False})
 
 
