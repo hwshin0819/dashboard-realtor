@@ -48,7 +48,7 @@ user_allowed = set(pages)
 # (관리자 관리 / 접속 로그는 계정별 권한 대상이 아니라 관리자에게만 항상 보이는 메뉴다).
 nav_items = list(auth.ALL_PAGES)
 if auth.is_admin():
-    nav_items += [auth.PAGE_ADMIN, auth.PAGE_ACCESS_LOG]
+    nav_items += [auth.PAGE_ACCESS_LOG, auth.PAGE_ADMIN]
     user_allowed.update([auth.PAGE_ADMIN, auth.PAGE_ACCESS_LOG])
 
 fallback_page = next((p for p in nav_items if p in user_allowed), None)
@@ -74,19 +74,22 @@ with st.sidebar:
     else:
         selected_page = nav_items[0] if nav_items else None
 
+    # radiogroup의 i번째 직계 자식을 잡을 때 label이 아니라 *(범용 선택자)로 잡는 이유:
+    # Streamlit 버전에 따라 그 직계 자식이 <label> 자체이거나(구버전) <label>을 감싼 <div>이거나
+    # (신버전) 달라서 — 어느 쪽이든 "i번째 자식"이라는 위치는 똑같으므로 태그명에 의존하지 않는다.
     disallowed_idx = [i + 1 for i, p in enumerate(nav_items) if p not in user_allowed]
     if disallowed_idx:
         selectors = ", ".join(
-            f'section[data-testid="stSidebar"] div[role="radiogroup"] > label:nth-child({i}) p'
+            f'section[data-testid="stSidebar"] div[role="radiogroup"] > *:nth-child({i}) p'
             for i in disallowed_idx
         )
         st.markdown(f"<style>{selectors} {{ color: {theme.MUTED} !important; }}</style>", unsafe_allow_html=True)
 
-    # 관리자 전용 메뉴(관리자 계정 관리/시스템 접속 로그) 앞에 구분선을 넣어 일반 메뉴와 시각적으로 나눈다.
+    # 관리자 전용 메뉴(시스템 접속 로그/관리자 계정 관리) 앞에 구분선을 넣어 일반 메뉴와 시각적으로 나눈다.
     if auth.is_admin():
         admin_idx = len(auth.ALL_PAGES) + 1
         st.markdown(
-            f'<style>section[data-testid="stSidebar"] div[role="radiogroup"] > label:nth-child({admin_idx}) '
+            f'<style>section[data-testid="stSidebar"] div[role="radiogroup"] > *:nth-child({admin_idx}) '
             f'{{ margin-top: 12px; padding-top: 12px; border-top: 1px solid {theme.LINE}; }}</style>',
             unsafe_allow_html=True,
         )

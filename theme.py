@@ -184,12 +184,16 @@ div[role="radiogroup"] > label:has(input:checked) p {{
 }}
 div[role="radiogroup"] input {{ display:none; }}
 
-/* 사이드바 메뉴(왼쪽 페이지 네비게이션): 배경 강조 없이, 선택된 항목만 굵게 */
+/* 사이드바 메뉴(왼쪽 페이지 네비게이션): 배경 강조 없이, 선택된 항목만 굵게.
+   label을 > 직계 자식으로 안 잡고 그냥 후손(space)으로 잡는 이유: Streamlit 버전에 따라
+   radiogroup의 직계 자식이 <label>이거나(구버전) <label>을 한 겹 더 감싼 <div>이거나(신버전,
+   react-aria 구조 변경) 달라서, 로컬(구버전)과 streamlit.app(최신 자동 배포)이 서로 다른 DOM을
+   그릴 수 있다. > 대신 후손 선택자를 쓰면 둘 다에서 동작한다. */
 section[data-testid="stSidebar"] div[role="radiogroup"] {{
     flex-direction: column;
     gap: 2px !important;
 }}
-section[data-testid="stSidebar"] div[role="radiogroup"] > label {{
+section[data-testid="stSidebar"] div[role="radiogroup"] label {{
     border: none;
     border-radius: 10px;
     padding: 10px 12px;
@@ -201,7 +205,7 @@ section[data-testid="stSidebar"] div[role="radiogroup"] > label {{
 section[data-testid="stSidebar"] div[role="radiogroup"] label div:has(+ [data-testid="stMarkdownContainer"]) {{
     display: none;
 }}
-section[data-testid="stSidebar"] div[role="radiogroup"] > label:has(input:checked) p {{
+section[data-testid="stSidebar"] div[role="radiogroup"] label:has(input:checked) p {{
     color: {INK} !important;
     font-weight: 700;
 }}
