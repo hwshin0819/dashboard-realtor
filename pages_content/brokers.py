@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""개업공인중개사 현황: 거시 개폐업 추세 모니터링 + B2B 영업 타겟팅 DB 추출을 한 화면에서."""
+"""개업공인중개사 현황: 거시 개폐업 추세 모니터링 화면."""
 import io
 
 import pandas as pd
@@ -334,27 +334,6 @@ def _matrix_to_excel_bytes(df: pd.DataFrame, regions: list, months_desc: list) -
     return buf.getvalue()
 
 
-def _leads_to_excel_bytes(rows: list[dict]) -> bytes:
-    wb = Workbook()
-    ws = wb.active
-    ws.title = "신규_영업_타겟"
-    headers = ["상호명", "법정동", "등록일자"]
-    bold = Font(bold=True)
-    for col, label in enumerate(headers, start=1):
-        cell = ws.cell(row=1, column=col, value=label)
-        cell.font = bold
-    for row_idx, r in enumerate(rows, start=2):
-        ws.cell(row=row_idx, column=1, value=r["상호명"])
-        ws.cell(row=row_idx, column=2, value=r["법정동"])
-        ws.cell(row=row_idx, column=3, value=r["등록일자"])
-    ws.column_dimensions["A"].width = 28
-    ws.column_dimensions["B"].width = 22
-    ws.column_dimensions["C"].width = 14
-    buf = io.BytesIO()
-    wb.save(buf)
-    return buf.getvalue()
-
-
 def render():
     rows = real_stats.load_region_monthly_stats()
     if not rows:
@@ -399,10 +378,6 @@ def render():
         # ---- KPI 1행 (현재 스냅샷 기준 + 선택된 지역·기간 기준) ----
         status_counts = real_stats.load_office_status_counts()
         active_cnt = status_counts.get("영업중", 0)
-
-        new_offices = real_stats.load_new_offices_this_month()
-        national = real_stats.national_monthly_series()
-        latest_national = national[-1] if national else {}
 
         # 상단 지역·기간 필터가 기본값('전체' 기간)이면 이달 기준 개업/폐업을, 기간을 좁히면(프리셋 포함)
         # 선택된 지역·기간 동안의 누적 개업/폐업을 보여준다. '전체' 기간 누적은 이 카드의 취지(당월
@@ -460,8 +435,8 @@ def render():
         if start_month > end_month:
             start_month, end_month = end_month, start_month
 
-        # ---- 탭 3개: 그래프 추이 / 지역별 상세 / B2B 신규 영업 타겟 ----
-        tab1, tab2, tab3 = st.tabs(["그래프 추이", "지역별 상세", "B2B 신규 영업 타겟"])
+        # ---- 탭 2개: 그래프 추이 / 지역별 상세 ----
+        tab1, tab2 = st.tabs(["그래프 추이", "지역별 상세"])
 
         with tab1:
             with st.container(border=True):
@@ -510,27 +485,3 @@ def render():
                 hr.button("↺", key="reset_matrix_region", on_click=_reset_table_region, help="전국으로 되돌리기", use_container_width=True)
                 st.caption("※ 순증감 셀은 양수면 초록, 음수면 빨강 배경으로 표시됩니다. 시군구·영업중(Live) 데이터는 2026-09월부터 제공됩니다.")
                 _render_detail_table(table_region_short, table_df, regions_full, regions_short, period_months, months_desc)
-
-        with tab3:
-            with st.container(border=True):
-                top1, top2 = st.columns([3, 1])
-                top1.markdown(
-                    f'<div class="ov-panel-title">이달({latest_national.get("월", latest_month)})의 신규 개업 리스트</div>'
-                    '<div class="ov-panel-desc">등록일자가 이번 달인 사무소입니다. (전화번호는 현재 수집 데이터에 없어 표시되지 않습니다)</div>',
-                    unsafe_allow_html=True,
-                )
-                if new_offices:
-                    excel_bytes = _leads_to_excel_bytes(new_offices)
-                    top2.markdown('<div style="height:.3rem"></div>', unsafe_allow_html=True)
-                    top2.download_button(
-                        "⬇ 엑셀 다운로드",
-                        data=excel_bytes,
-                        file_name=f"B2B_신규영업타겟_{latest_national.get('월', latest_month)}.xlsx",
-                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                        key="dl_leads",
-                        use_container_width=True,
-                    )
-                    lead_df = pd.DataFrame(new_offices)
-                    st.dataframe(lead_df, use_container_width=True, hide_index=True)
-                else:
-                    st.info("이번 달 등록된 신규 개업 사무소가 없습니다.")
