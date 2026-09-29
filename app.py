@@ -119,6 +119,7 @@ elif selected_page == auth.PAGE_BROKERS:
     st.title(auth.PAGE_BROKERS)
 
     if auth.is_admin():
+        TAB_NAMES = ["개요", "웹훅 관리", "수집 대상", "수집테스트", "배치 스케줄"]
         tabs = st.tabs(TAB_NAMES)
 
         with tabs[0]:
