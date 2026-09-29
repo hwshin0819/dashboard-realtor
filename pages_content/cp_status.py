@@ -104,6 +104,7 @@ SECTIONS = ["시장 점유율", "검증 방식", "구성 비교"]
 SECTION_REPORT = "월간 리포트"     # 전체 모드 전용 — 예전 엑셀 월간 리포트 형식 재현
 SECTION_PROFILE = "월별 추이"      # 개별 CP 전용 — 점유율·구성비를 월별로 쭉 늘어놓는 탭
 SECTION_ETC = "특이사항"
+CP_SECTION_KEY = "cp_section"
 
 # 검증방식 묶음 — CP별 매물 검증방식 구성 차트 위 '전체 방식/집주인 방식' 토글과
 # _share_table의 집주인 방식 소계가 같이 쓴다.
@@ -557,6 +558,28 @@ def _market_trend_chart(labels, l_vals, m_vals, *, height=340):
         yaxis=dict(title="매물수", gridcolor=LINE, rangemode="tozero", tickformat=","),
         yaxis2=dict(title="회원수", overlaying="y", side="right", showgrid=False,
                     rangemode="tozero", tickformat=","),
+        xaxis=dict(gridcolor=LINE),
+    )
+    _base_layout(fig, height=height)
+    return fig
+
+
+def _count_share_chart(labels, count_vals, share_vals, count_name, *, height=280):
+    """건수(막대, 왼쪽 축)와 점유율(선 + 값 라벨, 오른쪽 축)을 한 차트에 같이 보여준다.
+    선 위에 %값을 직접 찍어 둬서, 점유율이 몇 %인지 보려고 마우스를 올릴 필요가 없다."""
+    fig = go.Figure()
+    fig.add_bar(x=labels, y=count_vals, name=count_name, marker_color=COMPOSE_PALETTE[0], yaxis="y")
+    fig.add_trace(go.Scatter(
+        x=labels, y=share_vals, name="점유율", mode="lines+markers+text",
+        line=dict(color=COMPOSE_PALETTE[1], width=2), marker=dict(size=5), yaxis="y2",
+        text=[f"{v:.1f}%" if v is not None else "" for v in share_vals],
+        textposition="top center", textfont=dict(size=10, color=COMPOSE_PALETTE[1]),
+        hovertemplate="%{x} · 점유율 %{y:.1f}%<extra></extra>",
+    ))
+    fig.update_layout(
+        yaxis=dict(title=count_name, gridcolor=LINE, rangemode="tozero", tickformat=","),
+        yaxis2=dict(title="점유율(%)", overlaying="y", side="right", showgrid=False,
+                    rangemode="tozero", ticksuffix="%"),
         xaxis=dict(gridcolor=LINE),
     )
     _base_layout(fig, height=height)
@@ -1581,19 +1604,20 @@ def _tab_report(D, T, include_hg):
 # 늘 D 전체 월을 그린다. 한공협 포함 토글만 그대로 따른다(점유율 분모에 영향을 주므로).
 
 def _section_cp_share_trend(D, selected, include_hg):
+    """매물수·회원수는 막대(왼쪽 축)로, 그 점유율은 선+값 라벨(오른쪽 축)로 한 차트에 같이."""
     labels = D["labels"]
+    d = D["d"][selected]
+
     st.markdown('<div class="ov-panel-title">매물 점유율 (월별)</div>', unsafe_allow_html=True)
     ls = cs.share_series(D, selected, "l", include_hg)
-    st.plotly_chart(
-        _trend_chart(labels, [("매물점유율", ls)], [COMPOSE_PALETTE[0]], pct=True, height=240),
-        use_container_width=True, config={"displayModeBar": False})
+    st.plotly_chart(_count_share_chart(labels, d["l"], ls, "매물수"),
+                    use_container_width=True, config={"displayModeBar": False})
 
     st.markdown('<div class="ov-panel-title" style="padding-top:14px;">회원 점유율 (월별)</div>',
                 unsafe_allow_html=True)
     ms = cs.share_series(D, selected, "m", include_hg)
-    st.plotly_chart(
-        _trend_chart(labels, [("회원점유율", ms)], [COMPOSE_PALETTE[1]], pct=True, height=240),
-        use_container_width=True, config={"displayModeBar": False})
+    st.plotly_chart(_count_share_chart(labels, d["m"], ms, "회원수"),
+                    use_container_width=True, config={"displayModeBar": False})
 
 
 def _section_cp_compose_trend(D, selected):
@@ -1817,27 +1841,37 @@ def render():
                 _section_rank(D, selected, T, include_hg)
 
         # 다른 메뉴(중개업 시장 동향·공인중개사 현황)와 같은 탭 UI.
-        # st.tabs는 숨은 탭 내용까지 전부 렌더하지만 서버측 40ms 수준이라 체감 차이가 없다.
+        # st.tabs()가 아니라 segmented_control로 탭을 흉내 낸다 — st.tabs()를 쓰면 이 페이지의
+        # 검증방식 히트맵 지표 선택박스(st.selectbox, key=HM_KEY)를 바꿀 때마다 원인 불명으로
+        # 무조건 첫 번째 탭으로 튕겨 나가는 게 재현됐다(같은 위치의 segmented_control이나 다른
+        # selectbox는 안 그런다 — Streamlit tabs 내부 상태 추적 쪽 버그로 보이나 정확한 원인은
+        # 못 찾았다). session_state로 선택 상태를 직접 들고 있으면 이 문제 자체가 생기지 않는다.
         # 시장 점유율·특이사항은 전체 모드 전용이라 개별 CP를 볼 땐 둘 다 뺀다.
         names = ((SECTIONS + [SECTION_REPORT, SECTION_ETC]) if selected == ALL
                   else [SECTION_PROFILE] + SECTIONS[1:])
-        tabs = st.tabs(names)
+        if st.session_state.get(CP_SECTION_KEY) not in names:
+            st.session_state[CP_SECTION_KEY] = names[0]
+        with st.container(key="cp_section_row"):
+            section = st.segmented_control(
+                "메뉴", names, key=CP_SECTION_KEY, label_visibility="collapsed"
+            ) or st.session_state[CP_SECTION_KEY]
+        _rule(top=10)
 
         if selected == ALL:
-            with tabs[0]:
+            if section == SECTIONS[0]:
                 _tab_share(D, selected, T, include_hg)
-            with tabs[1]:
+            elif section == SECTIONS[1]:
                 _tab_method(D, selected, T, include_hg)
-            with tabs[2]:
+            elif section == SECTIONS[2]:
                 _tab_compose(D, selected, T, include_hg)
-            with tabs[3]:
+            elif section == SECTION_REPORT:
                 _tab_report(D, T, include_hg)
-            with tabs[4]:
+            else:
                 _tab_etc(D, selected, T, include_hg)
         else:
-            with tabs[0]:
+            if section == SECTION_PROFILE:
                 _tab_profile(D, selected, include_hg)
-            with tabs[1]:
+            elif section == SECTIONS[1]:
                 _tab_method(D, selected, T, include_hg)
-            with tabs[2]:
+            else:
                 _tab_compose(D, selected, T, include_hg)
