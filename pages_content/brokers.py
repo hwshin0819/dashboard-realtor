@@ -32,6 +32,15 @@ _FILTER_CSS = f"""
     padding: 4px 10px !important; font-size: .78rem !important; white-space: nowrap !important;
     border-radius: 8px !important; min-height: unset !important;
 }}
+/* 엑셀 다운로드 팝업의 실제 다운로드 버튼만 예외적으로 회색(아웃라인)으로 —
+   다운로드 버튼은 앱 전체에서 채워진 초록이 기본(theme.py)이지만, 팝업 안에서는
+   위 형식 선택(초록 pill)과 겹쳐 너무 강조돼 보인다는 피드백으로 이 버튼만 뺀다. */
+.st-key-br_export_dl div[data-testid="stDownloadButton"] button {{
+    background: {CARD} !important; color: {MUTED} !important; border-color: {LINE} !important;
+}}
+.st-key-br_export_dl div[data-testid="stDownloadButton"] button:hover {{
+    background: {CARD} !important; color: {GREEN_DEEP} !important; border-color: {GREEN} !important;
+}}
 </style>
 """
 
@@ -357,25 +366,31 @@ def _matrix_to_excel_bytes(df: pd.DataFrame, regions: list, months_desc: list) -
 def _export_dialog(monthly_bytes: bytes, start_month: str, end_month: str):
     """'지역별 상세' 엑셀 버튼 하나로 월별(지금 화면의 지역·기간 매트릭스)과 일별
     (전일자 기준 전체 백업, 원래 로컬 collector가 쌓던 지역별_일별_통계.xlsx) 중
-    골라 받게 한다 — 형식이 완전히 달라 버튼 하나로 합칠 수 없어 팝업으로 고르게 했다."""
-    fmt = st.radio("형식", ["월별 (지금 선택한 지역·기간)", "일별 (전일자 기준 전체)"],
-                   key="br_export_fmt", label_visibility="collapsed")
+    골라 받게 한다 — 형식이 완전히 달라 버튼 하나로 합칠 수 없어 팝업으로 고르게 했다.
+    st.radio 대신 segmented_control을 쓰는 이유: radio는 선택 여부에 따라 동그라미
+    아이콘 크기가 달라 보이는 문제가 있고 세로로 쌓이는데, segmented_control은 이
+    페이지 다른 곳(기간 프리셋 등)과 같은 가로 pill 모양이라 더 낫다."""
+    fmt = st.segmented_control(
+        "형식", ["월별 (지금 선택한 지역·기간)", "일별 (전일자 기준 전체)"],
+        default="월별 (지금 선택한 지역·기간)", key="br_export_fmt", label_visibility="collapsed",
+    ) or "월별 (지금 선택한 지역·기간)"
+    st.markdown('<div style="height:.6rem"></div>', unsafe_allow_html=True)
+    dl_col = st.container(key="br_export_dl")
     if fmt.startswith("월별"):
-        st.download_button(
+        dl_col.download_button(
             "⬇ 월별 엑셀 다운로드", data=monthly_bytes,
             file_name=f"지역별_상세매트릭스_{start_month}_{end_month}.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            key="dl_matrix_monthly", use_container_width=True,
+            key="dl_matrix_monthly",
         )
     else:
         backup_bytes, backup_date = _daily_backup_bytes()
-        st.download_button(
+        dl_col.download_button(
             "⬇ 일별 엑셀 다운로드", data=backup_bytes,
             file_name=f"지역별_일별_통계_{backup_date or 'na'}.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             key="dl_matrix_daily",
             help=f"{backup_date or '–'} 기준(전일자) 지역별 개업·폐업·영업중 일별 통계 전체",
-            use_container_width=True,
         )
 
 
