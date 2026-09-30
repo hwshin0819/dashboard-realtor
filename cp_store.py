@@ -43,7 +43,25 @@ COLUMNS = [
 ]
 assert set(COLUMNS) == set(TEXT_COLS) | set(NUM_COLS), "컬럼 분류 누락"
 
+# cp_stats.load()가 실제로 읽는 컬럼만 — 나머지(cp, 지역구분, cp구분, 수집회차, CP변환,
+# 구홍보전화매물/회원, 모바일12매물/회원, 집주인프로모션매물)는 집계 로직에서 쓰지 않는다
+# (cp_stats.py 주석에 "원자료 컬럼과 계산값이 일치함을 확인했다"는 검증 기록만 있고 실제
+# 참조는 없음). CP 원자료가 68,000행 x 36열인데, 이 테이블을 읽을 때마다(캐시가 비어 있을 때,
+# 즉 Streamlit 프로세스가 재시작될 때마다) 안 쓰는 9개 컬럼까지 통째로 받아오면 Supabase
+# egress만 그만큼 낭비된다. 엑셀 업로드(replace_months)는 원본 보존을 위해 그대로 전체를 쓴다.
+STATS_COLUMNS = [
+    "div_date", "시도", "구시군", "매물그룹", "연월구분", "권역구분", "매물수", "회원수",
+] + [f"{m}매물수" for m in [
+    "현장확인", "홍보확인서", "홍보확인서2", "전화확인", "신홍보확인서",
+    "모바일", "모바일v2", "사전매물", "현장확인v2",
+]] + [f"{m}회원수" for m in [
+    "현장확인", "홍보확인서", "홍보확인서2", "전화확인", "신홍보확인서",
+    "모바일", "모바일v2", "사전매물", "현장확인v2",
+]] + ["CP변환2"]
+assert set(STATS_COLUMNS) <= set(COLUMNS), "STATS_COLUMNS에 없는 컬럼명이 섞임"
+
 _QUOTED = ", ".join(f'"{c}"' for c in COLUMNS)
+_STATS_QUOTED = ", ".join(f'"{c}"' for c in STATS_COLUMNS)
 _DDL = (
     f"CREATE TABLE IF NOT EXISTS {TABLE} (\n  "
     + ",\n  ".join(f'"{c}" ' + ("TEXT" if c in TEXT_COLS else "DOUBLE PRECISION")
@@ -118,13 +136,14 @@ def version() -> str | None:
 
 
 def read_all() -> pd.DataFrame:
+    """cp_stats.load()가 쓰는 컬럼만 받아온다(STATS_COLUMNS) — egress 절약."""
     conn = _ensure()
     try:
-        cur = conn.execute(f"SELECT {_QUOTED} FROM {TABLE}")
+        cur = conn.execute(f"SELECT {_STATS_QUOTED} FROM {TABLE}")
         rows = cur.fetchall()
     finally:
         conn.close()
-    return pd.DataFrame([tuple(r) for r in rows], columns=COLUMNS)
+    return pd.DataFrame([tuple(r) for r in rows], columns=STATS_COLUMNS)
 
 
 def summary() -> pd.DataFrame:
