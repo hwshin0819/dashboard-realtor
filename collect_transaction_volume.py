@@ -33,6 +33,8 @@ MAX_SECONDS_PER_RUN = 50 * 60  # 스케줄러로 주기 실행할 때, 한 번 �
 MAX_CONSECUTIVE_ERRORS = 8  # 이 이상 실패가 쌓이면(키 오류 등으로 추정) 조기 중단 (병렬이라 살짝 여유를 둠)
 MAX_WORKERS = 3  # 동시 호출 수 — 5로 하면 "초당 요청한도" 순간버스트에 자주 걸려서 낮춤
 RATE_BURST_RETRIES = 5  # "초당 요청한도 초과"는 그때만 잠깐 쉬면 곧 풀리므로, 재시도로 흡수한다
+REFRESH_RECENT_MONTHS = 2  # 실거래 신고가 계약 후 30일까지 늦게 들어오므로, 최근 이만큼의 달은
+                            # done으로 체크돼 있어도 매번 다시 수집해서 늦게 신고된 건을 반영한다
 
 
 def _load_service_key() -> str:
@@ -63,19 +65,22 @@ def _month_list(start_ym: str) -> list:
 
 
 def _pending_units(conn, months: list, sigungu: list):
-    """(월 최근순 -> 지역 -> 유형 -> 거래유형) 순서로 아직 끝나지 않은 작업 단위를 하나씩 낸다."""
+    """(월 최근순 -> 지역 -> 유형 -> 거래유형) 순서로 아직 끝나지 않은 작업 단위를 하나씩 낸다.
+    최근 REFRESH_RECENT_MONTHS개월은 done 여부와 무관하게 항상 다시 낸다 — 실거래 신고가 계약 후
+    30일까지 늦게 들어오는 경우가 많아, 한 번 수집했다고 그 달이 영영 끝난 게 아니기 때문이다."""
     done = {
         (r["sigungu_code"], r["property_type"], r["trade_type"], r["ym"])
         for r in conn.execute(
             "SELECT sigungu_code, property_type, trade_type, ym FROM transaction_collect_progress WHERE status='done'"
         )
     }
+    refresh_months = set(months[:REFRESH_RECENT_MONTHS])  # months는 최근->과거 순
     for ym in months:
         for code, name in sigungu:
             for ptype in PROPERTY_TYPES:
                 for ttype in TRADE_TYPES:
                     key = (code, ptype, ttype, ym)
-                    if key not in done:
+                    if ym in refresh_months or key not in done:
                         yield code, name, ptype, ttype, ym
 
 

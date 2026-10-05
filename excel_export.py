@@ -104,10 +104,16 @@ def append_daily_stats(today: str, active_by_region: dict, opened_by_region: dic
 
 
 def _daily_rows_by_date(conn, dates):
+    # 날짜마다 따로 조회하면 원격 DB 왕복이 날짜 수만큼 생겨 느려진다 — 한 번에 읽어서 묶는다.
+    by_date = {d: [] for d in dates}
+    if dates:
+        for r in conn.execute(
+            "SELECT date, region, active, opened, closed FROM daily_region_stats WHERE date = ANY(?)",
+            (list(dates),),
+        ).fetchall():
+            by_date[r["date"]].append(r)
     for d in dates:
-        rows = conn.execute(
-            "SELECT region, active, opened, closed FROM daily_region_stats WHERE date=?", (d,)
-        ).fetchall()
+        rows = by_date[d]
         yield d, (
             {r["region"]: r["active"] or 0 for r in rows},
             {r["region"]: r["opened"] or 0 for r in rows},

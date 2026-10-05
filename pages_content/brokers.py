@@ -367,9 +367,13 @@ def _export_dialog(monthly_bytes: bytes, start_month: str, end_month: str):
     """'지역별 상세' 엑셀 버튼 하나로 월별(지금 화면의 지역·기간 매트릭스)과 일별
     (전일자 기준 전체 백업, 원래 로컬 collector가 쌓던 지역별_일별_통계.xlsx) 중
     골라 받게 한다 — 형식이 완전히 달라 버튼 하나로 합칠 수 없어 팝업으로 고르게 했다.
+    일별 파일은 팝업을 열 때 미리 만들어 둔다(15분 캐시): 형식을 바꾼 직후 파일을 굽는 몇 초 동안
+    화면에 이전 형식의 버튼이 남아 있어서, 그걸 눌러 월별 파일을 받는 일이 없게 하려는 것.
     st.radio 대신 segmented_control을 쓰는 이유: radio는 선택 여부에 따라 동그라미
     아이콘 크기가 달라 보이는 문제가 있고 세로로 쌓이는데, segmented_control은 이
     페이지 다른 곳(기간 프리셋 등)과 같은 가로 pill 모양이라 더 낫다."""
+    with st.spinner("일별 자료 준비 중..."):
+        _daily_backup_bytes()
     fmt = st.segmented_control(
         "형식", ["월별 (지금 선택한 지역·기간)", "일별 (전일자 기준 전체)"],
         default="월별 (지금 선택한 지역·기간)", key="br_export_fmt", label_visibility="collapsed",
